@@ -1,0 +1,261 @@
+{
+  "updated_at": 1775636041,
+  "state": {
+    "user": {
+      "presence": "present",
+      "attention": "idle",
+      "emotion": "neutral",
+      "current_activity": "unknown",
+      "emotion_confidence": null,
+      "attention_confidence": null
+    },
+    "interaction": {
+      "mode": "normal",
+      "in_conversation": true,
+      "dialogue_state": "idle",
+      "last_user_time": 1775630004,
+      "last_agent_response_time": 1775635683
+    },
+    "focus": {
+      "active": false,
+      "start_ts": null,
+      "target_duration_sec": null,
+      "elapsed_sec": 0,
+      "remaining_sec": null,
+      "triggered_by": null,
+      "last_focus_end_ts": 1775635683
+    },
+    "environment": {
+      "light": null,
+      "noise": null,
+      "temperature": null,
+      "humidity": null
+    },
+    "cooldown": {
+      "reminder_last_ts": {
+        "focus_complete": 1775635683
+      }
+    },
+    "memory": {
+      "recent_events": [
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632144,
+          "payload": {
+            "remaining_sec": 62,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632145,
+          "payload": {
+            "remaining_sec": 61,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632146,
+          "payload": {
+            "remaining_sec": 60,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632147,
+          "payload": {
+            "remaining_sec": 59,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632148,
+          "payload": {
+            "remaining_sec": 58,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632149,
+          "payload": {
+            "remaining_sec": 57,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632150,
+          "payload": {
+            "remaining_sec": 56,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632151,
+          "payload": {
+            "remaining_sec": 55,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632152,
+          "payload": {
+            "remaining_sec": 54,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632153,
+          "payload": {
+            "remaining_sec": 53,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632154,
+          "payload": {
+            "remaining_sec": 52,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632155,
+          "payload": {
+            "remaining_sec": 51,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632156,
+          "payload": {
+            "remaining_sec": 50,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632157,
+          "payload": {
+            "remaining_sec": 49,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632158,
+          "payload": {
+            "remaining_sec": 48,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632159,
+          "payload": {
+            "remaining_sec": 47,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632160,
+          "payload": {
+            "remaining_sec": 46,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632161,
+          "payload": {
+            "remaining_sec": 45,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1775632162,
+          "payload": {
+            "remaining_sec": 44,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "timer_finished",
+          "timestamp": 1775635683,
+          "payload": {
+            "remaining_sec": 0,
+            "timer": "focus"
+          }
+        }
+      ],
+      "recent_messages": [
+        {
+          "role": "user",
+          "text": "???? 25 ??",
+          "timestamp": 1775630004
+        },
+        {
+          "role": "agent",
+          "text": "收到。当前 MVP 版本支持专注计时、mock 状态更新、基础记忆和简单提醒。",
+          "timestamp": 1775630004
+        },
+        {
+          "role": "user",
+          "text": "????",
+          "timestamp": 1775630004
+        },
+        {
+          "role": "agent",
+          "text": "收到。当前 MVP 版本支持专注计时、mock 状态更新、基础记忆和简单提醒。",
+          "timestamp": 1775630004
+        },
+        {
+          "role": "display",
+          "text": "状态已更新：presence = present",
+          "timestamp": 1775630689
+        },
+        {
+          "role": "agent",
+          "text": "已开始 25 分钟专注。",
+          "timestamp": 1775630705
+        },
+        {
+          "role": "display",
+          "text": "专注倒计时已启动：25 分钟。",
+          "timestamp": 1775630705
+        },
+        {
+          "role": "agent",
+          "text": "专注时间到了，休息一下吧。",
+          "timestamp": 1775635683
+        },
+        {
+          "role": "display",
+          "text": "本轮专注已完成。",
+          "timestamp": 1775635683
+        }
+      ],
+      "focus_sessions": [
+        {
+          "start_ts": 1775630705,
+          "end_ts": 1775635683,
+          "planned_duration_sec": 1500,
+          "actual_duration_sec": 4978,
+          "triggered_by": "cli",
+          "reason": "timer_complete"
+        }
+      ]
+    }
+  }
+}
