@@ -10,6 +10,7 @@
 - 倒计时结束提醒
 - 简单主动提醒与冷却控制
 - 最近事件、最近消息、专注记录保存
+- 连续情绪样本短期记录与窗口摘要
 - JSON 文件持久化与启动恢复
 
 ## 当前还没有实现什么
@@ -128,6 +129,7 @@ tests/
 docs/
   agent_architecture_v1.txt
   commands.txt
+  emotion_stream_memory_v1.md
 ```
 
 ## 如何运行
