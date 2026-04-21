@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
+from src.adapters.mock_input import parse_mock_command
 from src.agent.core import AgentCore
 from src.agent.event import Event
 from src.services.llm_service import LLMService
@@ -79,6 +80,13 @@ class AgentCoreTestCase(unittest.TestCase):
             any("专注时间到了" in action.payload.get("text", "") for action in actions),
             msg="timer 到期后应产生完成提醒",
         )
+
+    def test_parse_mock_fatigue_command(self) -> None:
+        evt = parse_mock_command("/mock fatigue high")
+        self.assertIsNotNone(evt)
+        assert evt is not None
+        self.assertEqual(evt.type, "user_fatigue_updated")
+        self.assertEqual(evt.payload.get("fatigue_level"), "high")
 
     def test_mock_state_update_changes_global_state(self) -> None:
         self.core.handle_event(

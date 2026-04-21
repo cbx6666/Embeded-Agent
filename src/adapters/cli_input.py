@@ -24,6 +24,10 @@ HELP_TEXT = """可用命令：
     /mock emotion tired
     /mock emotion stressed
     /mock emotion happy
+    /mock fatigue none
+    /mock fatigue mild
+    /mock fatigue moderate
+    /mock fatigue high
 
   系统命令：
     /state
