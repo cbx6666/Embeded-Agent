@@ -10,7 +10,6 @@ def speak(text: str, kind: str | None = None) -> Action:
     return Action(type="speak", payload=payload)
 
 
-
 def display(text: str, kind: str | None = None) -> Action:
     """构造一条显示类动作。"""
     payload = {"text": text}
@@ -19,62 +18,53 @@ def display(text: str, kind: str | None = None) -> Action:
     return Action(type="display", payload=payload)
 
 
-
-def render_pet_expression(
-    expression: str,
-    *,
-    style: str | None = None,
-    intensity: float | None = None,
-    duration_ms: int | None = None,
-    sensor_hint: dict[str, object] | None = None,
-) -> Action:
-    """构造桌宠显示屏表情动作。"""
-    payload: dict[str, object] = {"expression": expression}
-    if style:
-        payload["style"] = style
-    if intensity is not None:
-        payload["intensity"] = max(0.0, min(1.0, float(intensity)))
-    if duration_ms is not None:
-        payload["duration_ms"] = max(0, int(duration_ms))
-    if sensor_hint:
-        payload["sensor_hint"] = sensor_hint
-    return Action(type="render_pet_expression", payload=payload)
-
-
-
-def play_voice(
-    *,
-    text: str,
-    voice: str | None = None,
-    emotion: str | None = None,
-    interrupt: bool = False,
-    volume: int | None = None,
-) -> Action:
-    """构造语音播报动作。"""
-    payload: dict[str, object] = {
-        "text": text,
-        "interrupt": bool(interrupt),
-    }
-    if voice:
-        payload["voice"] = voice
-    if emotion:
-        payload["emotion"] = emotion
-    if volume is not None:
-        payload["volume"] = max(0, min(100, int(volume)))
-    return Action(type="play_voice", payload=payload)
-
-
-
 def start_timer(duration_sec: int) -> Action:
     """构造一条启动定时器动作。"""
     return Action(type="start_timer", payload={"duration_sec": duration_sec})
-
 
 
 def stop_timer() -> Action:
     """构造一条停止定时器动作。"""
     return Action(type="stop_timer", payload={})
 
+
+def start_voice_capture(source: str, trigger: str | None = None) -> Action:
+    """构造一条启动语音采集动作。"""
+    payload = {"source": source}
+    if trigger:
+        payload["trigger"] = trigger
+    return Action(type="start_voice_capture", payload=payload)
+
+
+def stop_voice_capture(source: str, reason: str | None = None) -> Action:
+    """构造一条停止语音采集动作。"""
+    payload = {"source": source}
+    if reason:
+        payload["reason"] = reason
+    return Action(type="stop_voice_capture", payload=payload)
+
+
+def set_tts_voice(voice_id: str) -> Action:
+    """构造一条设置音色动作。"""
+    return Action(type="set_tts_voice", payload={"voice_id": voice_id})
+
+
+def set_tts_volume(volume: int) -> Action:
+    """构造一条设置音量动作。"""
+    return Action(type="set_tts_volume", payload={"volume": volume})
+
+
+def set_tts_speed(speed: float) -> Action:
+    """构造一条设置语速动作。"""
+    return Action(type="set_tts_speed", payload={"speed": speed})
+
+
+def environment_alert(sensor: str, level: str, message: str) -> Action:
+    """构造一条环境提醒动作。"""
+    return Action(
+        type="environment_alert",
+        payload={"sensor": sensor, "level": level, "message": message},
+    )
 
 
 def none_action() -> Action:
