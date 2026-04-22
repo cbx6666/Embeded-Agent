@@ -5,15 +5,33 @@
 """
 
 from src.agent.action.action_model import Action
-from src.agent.action.factories import display, none_action, speak, start_timer, stop_timer
+from src.agent.action.factories import (
+    display,
+    environment_alert,
+    none_action,
+    set_tts_speed,
+    set_tts_voice,
+    set_tts_volume,
+    speak,
+    start_timer,
+    start_voice_capture,
+    stop_timer,
+    stop_voice_capture,
+)
 from src.agent.action.types import ActionType
 
 __all__ = [
     "Action",
     "ActionType",
     "display",
+    "environment_alert",
     "none_action",
+    "set_tts_speed",
+    "set_tts_voice",
+    "set_tts_volume",
     "speak",
     "start_timer",
+    "start_voice_capture",
     "stop_timer",
+    "stop_voice_capture",
 ]
