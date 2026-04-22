@@ -62,6 +62,61 @@ def user_emotion_updated_from_rafdb(
     return Event(type="user_emotion_updated", timestamp=timestamp, payload=payload)
 
 
+
+def display_sensor_updated(
+    *,
+    timestamp: int,
+    expression: str,
+    source: str,
+    brightness: int | None = None,
+    fps: int | None = None,
+    sensor_values: dict[str, object] | None = None,
+    screen_id: str | None = None,
+) -> Event:
+    """构造显示屏/桌宠表情侧的传感事件。"""
+    payload: dict[str, object] = {
+        "expression": expression,
+        "source": source,
+    }
+    if brightness is not None:
+        payload["brightness"] = int(brightness)
+    if fps is not None:
+        payload["fps"] = int(fps)
+    if sensor_values:
+        payload["sensor_values"] = sensor_values
+    if screen_id:
+        payload["screen_id"] = screen_id
+    return Event(type="display_sensor_updated", timestamp=timestamp, payload=payload)
+
+
+
+def voice_input_captured(
+    *,
+    timestamp: int,
+    text: str,
+    source: str,
+    confidence: float | None = None,
+    language: str | None = None,
+    is_final: bool = True,
+    audio_id: str | None = None,
+) -> Event:
+    """构造语音输入事件。"""
+    payload: dict[str, object] = {
+        "text": text,
+        "source": source,
+        "is_final": bool(is_final),
+    }
+    normalized_confidence = _normalize_confidence(confidence)
+    if normalized_confidence is not None:
+        payload["confidence"] = normalized_confidence
+    if language:
+        payload["language"] = language
+    if audio_id:
+        payload["audio_id"] = audio_id
+    return Event(type="voice_input_captured", timestamp=timestamp, payload=payload)
+
+
+
 def _resolve_raf_emotion(*, label_id: int | None, label_name: str | None) -> str:
     """解析 RAF-DB 预测标签到规范表情字符串。"""
     if label_name:
@@ -69,6 +124,7 @@ def _resolve_raf_emotion(*, label_id: int | None, label_name: str | None) -> str
     if label_id is None:
         raise ValueError("label_id 和 label_name 不能同时为空。")
     return RAF_DB_LABELS.get(label_id, "neutral")
+
 
 
 def _normalize_confidence(confidence: float | None) -> float | None:

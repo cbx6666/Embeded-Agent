@@ -9,6 +9,8 @@ EventType = Literal[
     "user_attention_updated",
     "user_emotion_updated",
     "user_fatigue_updated",
+    "display_sensor_updated",
+    "voice_input_captured",
     "environment_updated",
     "timer_ticked",
     "timer_finished",

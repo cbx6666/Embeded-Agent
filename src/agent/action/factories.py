@@ -20,6 +20,51 @@ def display(text: str, kind: str | None = None) -> Action:
 
 
 
+def render_pet_expression(
+    expression: str,
+    *,
+    style: str | None = None,
+    intensity: float | None = None,
+    duration_ms: int | None = None,
+    sensor_hint: dict[str, object] | None = None,
+) -> Action:
+    """构造桌宠显示屏表情动作。"""
+    payload: dict[str, object] = {"expression": expression}
+    if style:
+        payload["style"] = style
+    if intensity is not None:
+        payload["intensity"] = max(0.0, min(1.0, float(intensity)))
+    if duration_ms is not None:
+        payload["duration_ms"] = max(0, int(duration_ms))
+    if sensor_hint:
+        payload["sensor_hint"] = sensor_hint
+    return Action(type="render_pet_expression", payload=payload)
+
+
+
+def play_voice(
+    *,
+    text: str,
+    voice: str | None = None,
+    emotion: str | None = None,
+    interrupt: bool = False,
+    volume: int | None = None,
+) -> Action:
+    """构造语音播报动作。"""
+    payload: dict[str, object] = {
+        "text": text,
+        "interrupt": bool(interrupt),
+    }
+    if voice:
+        payload["voice"] = voice
+    if emotion:
+        payload["emotion"] = emotion
+    if volume is not None:
+        payload["volume"] = max(0, min(100, int(volume)))
+    return Action(type="play_voice", payload=payload)
+
+
+
 def start_timer(duration_sec: int) -> Action:
     """构造一条启动定时器动作。"""
     return Action(type="start_timer", payload={"duration_sec": duration_sec})

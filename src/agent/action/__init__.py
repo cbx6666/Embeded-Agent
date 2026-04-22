@@ -5,7 +5,15 @@
 """
 
 from src.agent.action.action_model import Action
-from src.agent.action.factories import display, none_action, speak, start_timer, stop_timer
+from src.agent.action.factories import (
+    display,
+    none_action,
+    play_voice,
+    render_pet_expression,
+    speak,
+    start_timer,
+    stop_timer,
+)
 from src.agent.action.types import ActionType
 
 __all__ = [
@@ -13,6 +21,8 @@ __all__ = [
     "ActionType",
     "display",
     "none_action",
+    "play_voice",
+    "render_pet_expression",
     "speak",
     "start_timer",
     "stop_timer",
