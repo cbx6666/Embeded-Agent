@@ -1,4 +1,4 @@
-﻿from typing import Literal
+from typing import Literal
 
 # Agent 当前支持的最小动作集合。
 ActionType = Literal[
@@ -13,4 +13,6 @@ ActionType = Literal[
     "set_tts_volume",
     "set_tts_speed",
     "environment_alert",
+    "render_pet_expression",
+    "play_voice",
 ]

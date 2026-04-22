@@ -10,6 +10,11 @@ FIELD_MAP = {
     "presence": ("user_presence_updated", "presence", {"present", "away", "unknown"}),
     "attention": ("user_attention_updated", "attention", {"focused", "distracted", "idle"}),
     "emotion": ("user_emotion_updated", "emotion", {"neutral", "tired", "stressed", "happy"}),
+    "fatigue": (
+        "user_fatigue_updated",
+        "fatigue_level",
+        {"none", "mild", "moderate", "high"},
+    ),
 }
 
 
