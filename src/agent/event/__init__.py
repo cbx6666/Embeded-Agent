@@ -6,6 +6,7 @@
 """
 
 from src.agent.event.event_model import Event
+from src.agent.event.factories import user_emotion_updated_from_rafdb
 from src.agent.event.types import EventType
 
-__all__ = ["Event", "EventType"]
+__all__ = ["Event", "EventType", "user_emotion_updated_from_rafdb"]

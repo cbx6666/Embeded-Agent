@@ -69,6 +69,8 @@ class AgentCore:
                 "recent_events": self.state.memory.recent_events,
                 "recent_messages": self.state.memory.recent_messages,
                 "focus_sessions": self.state.memory.focus_sessions,
+                "emotion_samples": self.state.memory.emotion_samples,
+                "emotion_summaries": self.state.memory.emotion_summaries,
             }
             return json.dumps(history, ensure_ascii=False, indent=2)
 

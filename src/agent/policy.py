@@ -165,10 +165,19 @@ def _build_status_summary(state: AgentState) -> str:
         focus_part = f"正在专注，剩余 {state.focus.remaining_sec} 秒。"
     else:
         focus_part = "当前没有进行中的专注。"
+
+    emotion_part = ""
+    if state.memory.emotion_summaries:
+        latest = state.memory.emotion_summaries[-1]
+        dominant = latest.get("dominant_emotion", "unknown")
+        samples = latest.get("sample_count", 0)
+        emotion_part = f"；最近情绪窗口主导情绪：{dominant}（样本 {samples}）"
+
     return (
         f"当前模式：{state.interaction.mode}；"
         f"在场状态：{state.user.presence}；"
         f"注意力：{state.user.attention}；"
         f"情绪：{state.user.emotion}；"
         f"{focus_part}"
+        f"{emotion_part}"
     )
