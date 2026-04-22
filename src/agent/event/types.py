@@ -8,6 +8,8 @@ EventType = Literal[
     "user_presence_updated",
     "user_attention_updated",
     "user_emotion_updated",
+    "user_posture_updated",
+    "user_posture_summary",
     "environment_updated",
     "timer_ticked",
     "timer_finished",
