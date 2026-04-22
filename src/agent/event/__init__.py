@@ -6,7 +6,17 @@
 """
 
 from src.agent.event.event_model import Event
-from src.agent.event.factories import user_emotion_updated_from_rafdb
+from src.agent.event.factories import (
+    display_sensor_updated,
+    user_emotion_updated_from_rafdb,
+    voice_input_captured,
+)
 from src.agent.event.types import EventType
 
-__all__ = ["Event", "EventType", "user_emotion_updated_from_rafdb"]
+__all__ = [
+    "Event",
+    "EventType",
+    "user_emotion_updated_from_rafdb",
+    "display_sensor_updated",
+    "voice_input_captured",
+]
