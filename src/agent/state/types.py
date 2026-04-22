@@ -7,6 +7,7 @@ Mode = Literal["normal", "focus", "silent"]
 UserPresence = Literal["present", "away", "unknown"]
 UserAttention = Literal["focused", "distracted", "idle"]
 UserEmotion = Literal["neutral", "tired", "stressed", "happy"]
+
 CurrentActivity = Literal["studying", "working", "resting", "unknown"]
 
 # 当前对话阶段。
