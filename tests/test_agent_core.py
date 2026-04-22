@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
+from src.adapters.mock_input import parse_mock_command
 from src.agent.core import AgentCore
 from src.agent.event import Event
 from src.services.llm_service import LLMService
@@ -80,6 +81,13 @@ class AgentCoreTestCase(unittest.TestCase):
             msg="timer 到期后应产生完成提醒",
         )
 
+    def test_parse_mock_fatigue_command(self) -> None:
+        evt = parse_mock_command("/mock fatigue high")
+        self.assertIsNotNone(evt)
+        assert evt is not None
+        self.assertEqual(evt.type, "user_fatigue_updated")
+        self.assertEqual(evt.payload.get("fatigue_level"), "high")
+
     def test_mock_state_update_changes_global_state(self) -> None:
         self.core.handle_event(
             Event(
@@ -125,6 +133,57 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertFalse(
             any(action.payload.get("kind") == "rest_reminder" for action in second_actions)
         )
+
+    def test_emotion_samples_and_summaries_are_recorded(self) -> None:
+        self.core.handle_event(
+            Event(
+                type="user_emotion_updated",
+                timestamp=1000,
+                payload={"emotion": "stressed", "confidence": 0.8, "source": "camera"},
+            )
+        )
+        self.core.handle_event(
+            Event(
+                type="user_emotion_updated",
+                timestamp=1005,
+                payload={"emotion": "stressed", "confidence": 0.9, "source": "camera"},
+            )
+        )
+        self.assertEqual(len(self.core.state.memory.emotion_samples), 2)
+        self.assertEqual(len(self.core.state.memory.emotion_summaries), 1)
+        first_summary = self.core.state.memory.emotion_summaries[-1]
+        self.assertEqual(first_summary["dominant_emotion"], "stressed")
+
+        self.core.handle_event(
+            Event(
+                type="user_emotion_updated",
+                timestamp=1065,
+                payload={"emotion": "happy", "confidence": 0.7, "source": "camera"},
+            )
+        )
+        self.assertEqual(len(self.core.state.memory.emotion_summaries), 2)
+
+    def test_status_query_includes_latest_emotion_summary(self) -> None:
+        self.core.handle_event(
+            Event(
+                type="user_emotion_updated",
+                timestamp=2000,
+                payload={"emotion": "happy", "confidence": 0.88, "source": "camera"},
+            )
+        )
+        actions = self.core.handle_event(
+            Event(
+                type="user_text_input",
+                timestamp=2001,
+                payload={"text": "现在状态如何", "source": "test"},
+            )
+        )
+        spoken_texts = [
+            str(action.payload.get("text", ""))
+            for action in actions
+            if action.type == "speak"
+        ]
+        self.assertTrue(any("主导情绪" in text for text in spoken_texts))
 
 
 if __name__ == "__main__":

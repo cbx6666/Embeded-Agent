@@ -33,3 +33,8 @@
 - 状态例子：`state.focus.active = True`
 - 事件例子：`Event(type="user_presence_updated", payload={"presence": "away"})`
 - 动作例子：`Action(type="display", payload={"text": "用户已离席"})`
+
+## 多人协作：内核与适配器
+
+- **不写内核、只接硬件/算法的一端**：只维护 **`event`/`action` 的 types 与 factories**、**`adapters/`**、**`docs/<主题>_integration.md`**；**现阶段不要改** `reducer` / `policy` / `core` / `state` / `memory_service`，详见 **`docs/team_integration_guide.md`**。  
+- **写内核**：在协作者契约稳定后，维护 `reducer` / `policy` / `core`（先 `reduce_state` 再 `decide_actions` 再 `_execute_actions`；`policy` 不直接改状态），按需扩展 `state` 与记忆，并补充测试。

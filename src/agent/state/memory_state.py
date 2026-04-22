@@ -9,3 +9,5 @@ class MemoryState:
     recent_events: list[dict[str, Any]] = field(default_factory=list)
     recent_messages: list[dict[str, Any]] = field(default_factory=list)
     focus_sessions: list[dict[str, Any]] = field(default_factory=list)
+    emotion_samples: list[dict[str, Any]] = field(default_factory=list)
+    emotion_summaries: list[dict[str, Any]] = field(default_factory=list)

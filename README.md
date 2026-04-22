@@ -10,13 +10,14 @@
 - 倒计时结束提醒
 - 简单主动提醒与冷却控制
 - 最近事件、最近消息、专注记录保存
+- 连续情绪样本短期记录与窗口摘要
 - JSON 文件持久化与启动恢复
+- 可选摄像头管线：**MediaPipe Face Mesh**（EAR/PERCLOS → `user_fatigue_updated`），可选 **ResNet18 + RAF 权重** → `user_emotion_updated`（**不使用 YOLO**；安装见 `requirements-vision.txt`，运行加 `--vision`）
 
 ## 当前还没有实现什么
 
-- 真实硬件接入
-- 语音 ASR / TTS
-- 摄像头视觉识别
+- 除控制台外的真实硬件输出（TTS / 屏 / 灯等）
+- 语音 ASR / TTS 适配器
 - 传感器采集
 - 真正的大模型推理
 - 多 Agent 协作和复杂插件系统
@@ -65,6 +66,7 @@
   - `user_presence_updated`
   - `user_attention_updated`
   - `user_emotion_updated`
+  - `user_fatigue_updated`
   - `timer_ticked`
   - `timer_finished`
 
@@ -128,17 +130,24 @@ tests/
 docs/
   agent_architecture_v1.txt
   commands.txt
+  emotion_fatigue_integration.md
+  team_integration_guide.md
 ```
 
 ## 如何运行
 
 环境要求：
 - Python 3.10+
+- 基础依赖：`pip install -r requirements.txt`（含 `numpy`，供几何与单测）
+- 摄像头情绪/疲劳：`pip install -r requirements-vision.txt`
 
 启动：
 
 ```bash
 python -m src.main
+# 可选：后台线程读摄像头（需 mediapipe + opencv）
+python -m src.main --vision
+python -m src.main --vision --raf-ckpt path/to/ckpt.pth
 ```
 
 启动后可输入：
@@ -149,6 +158,7 @@ python -m src.main
 - `/mock presence present`
 - `/mock attention focused`
 - `/mock emotion tired`
+- `/mock fatigue moderate`
 - `/state`
 - `/history`
 - `/help`
@@ -166,6 +176,7 @@ mock 命令：
 - `/mock presence present|away|unknown`
 - `/mock attention focused|distracted|idle`
 - `/mock emotion neutral|tired|stressed|happy`
+- `/mock fatigue none|mild|moderate|high`
 
 系统命令：
 - `/state`
@@ -181,6 +192,8 @@ python -m unittest discover -s tests -v
 
 ## 后续如何扩展到硬件接入
 
+- **`docs/team_integration_guide.md`**：给**不负责内核**的同学（分支、Adapter、`docs/<主题>_integration.md` 模板）  
+- 各业务模块说明：命名 **`docs/<主题>_integration.md`**（示例：本仓库 **`docs/emotion_fatigue_integration.md`**）
 - 保持 `state/`、`event/`、`action/` 作为核心领域模型稳定层
 - 在 `adapters/` 中增加摄像头、麦克风、按键、传感器、屏幕、TTS、LED 等适配器
 - 让新的硬件适配器继续输出标准事件、消费标准动作
