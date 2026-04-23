@@ -43,10 +43,6 @@ def reduce_state(state: AgentState, event: Event) -> AgentState:
     elif event.type == "noise_level_updated":
         state.environment.noise_db = _optional_int(event.payload.get("noise_db"))
         state.environment.noise_level = _optional_str(event.payload.get("level"))
-    elif event.type == "user_behavior_signal_updated":
-        pass
-    elif event.type == "user_behavior_summary_updated":
-        pass
     elif event.type == "voice_input_started":
         state.interaction.dialogue_state = "listening"
     elif event.type == "voice_input_stopped":
@@ -118,6 +114,8 @@ def _complete_focus_session(state: AgentState, end_ts: int, reason: str) -> None
             "reason": reason,
         }
     )
+    state.memory.focus_session_count += 1
+    state.memory.focus_total_duration_sec += actual_duration_sec
 
     state.interaction.mode = "normal"
     state.interaction.dialogue_state = "idle"

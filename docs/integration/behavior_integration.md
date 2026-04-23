@@ -6,8 +6,6 @@
 |------------|------|------|
 | `user_presence_updated` | 用户是否在场、离席或未知。 | 只上报在场事实。 |
 | `user_attention_updated` | 用户当前是否专注、分心或空闲。 | 只上报注意力事实；`behavior` 是正式字段，不是附属字段。 |
-| `user_behavior_signal_updated` | 当前行为线索摘要。 | 辅助事件，用于承载结构化行为线索。 |
-| `user_behavior_summary_updated` | 长时间异常行为摘要。 | 用于汇总，不直接表达提醒动作。 |
 
 建议的闭集：
 
@@ -29,4 +27,4 @@
 
 | Adapter | 责任 |
 |---------|------|
-| `BehaviorAdapter` | 将摄像头、关键点、行为分类模型或规则结果转换成标准行为事件。 |
+| `BehaviorAdapter` | 将摄像头、关键点、行为分类模型或规则结果转换成 `user_presence_updated` 与 `user_attention_updated`。 |
