@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-"""桌宠显示屏适配器。
-
-职责：
-- 消费标准 Action，把桌宠表情渲染到具体显示设备；
-- 从显示侧或挂载传感器采样后，转换成标准 Event；
-- 不直接修改 core/state，只通过注入的 sink 发事件。
-"""
+"""显示与灯光输出适配器。"""
 
 import threading
 import time
 from typing import Any, Protocol
 
 from src.agent.action import Action
-from src.agent.event import display_sensor_updated
+from src.agent.event import make_display_sensor_event
 
 
 class EventEmitSink(Protocol):
@@ -30,7 +24,9 @@ class DisplayHardware(Protocol):
 
 
 class PetDisplayAdapter:
-    """将标准动作映射到显示硬件，并为传感器预留事件出口。"""
+    """将标准显示动作映射到显示硬件，并为传感器预留事件出口。"""
+
+    SUPPORTED_ACTIONS = {"display", "render_pet_expression", "set_light_state"}
 
     def __init__(
         self,
@@ -44,10 +40,14 @@ class PetDisplayAdapter:
         self._lock = threading.Lock()
 
     def execute(self, action: Action) -> None:
-        if action.type not in {"display", "render_pet_expression"}:
+        if action.type not in self.SUPPORTED_ACTIONS:
             return
-        expression, payload = self._normalize_action(action)
+
         with self._lock:
+            if action.type == "set_light_state":
+                self._execute_light_action(action)
+                return
+            expression, payload = self._normalize_visual_action(action)
             self._hardware.render_expression(expression, payload)
 
     def emit_sensor_snapshot(
@@ -62,7 +62,7 @@ class PetDisplayAdapter:
     ) -> None:
         if self._sink is None:
             return
-        event = display_sensor_updated(
+        event = make_display_sensor_event(
             timestamp=timestamp or int(time.time()),
             expression=expression,
             source=self._source,
@@ -93,12 +93,17 @@ class PetDisplayAdapter:
             timestamp=timestamp,
         )
 
-    def _normalize_action(self, action: Action) -> tuple[str, dict[str, Any]]:
+    def _normalize_visual_action(self, action: Action) -> tuple[str, dict[str, Any]]:
         payload = dict(action.payload)
         if action.type == "render_pet_expression":
             expression = str(payload.get("expression", "neutral")).strip() or "neutral"
             return expression, payload
+
         text = str(payload.get("text", "")).strip()
-        expression = str(payload.get("kind", "status")).strip() or "status"
-        normalized_payload = {"text": text, "kind": expression}
-        return expression, normalized_payload
+        expression = str(payload.get("status", payload.get("kind", "status"))).strip() or "status"
+        return expression, payload | {"text": text}
+
+    def _execute_light_action(self, action: Action) -> None:
+        set_light = getattr(self._hardware, "set_light_state", None)
+        if callable(set_light):
+            set_light(dict(action.payload))

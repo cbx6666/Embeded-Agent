@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-"""事件构造辅助函数。
-
-该模块用于把各类输入侧原始结果，转换为核心可消费的标准 Event。
-"""
+"""事件构造辅助函数。"""
 
 import time
 from typing import Any
@@ -11,12 +8,52 @@ from typing import Any
 from src.agent.event.event_model import Event
 
 
-# =========================
-# posture 相关（姿态识别）
-# =========================
+def _resolve_timestamp(timestamp: int | None) -> int:
+    return int(time.time()) if timestamp is None else int(timestamp)
 
-def make_posture_event(
-    posture: str,
+
+def _build_event(event_type: str, timestamp: int | None = None, **payload: Any) -> Event:
+    normalized_payload = {key: value for key, value in payload.items() if value is not None}
+    return Event(type=event_type, timestamp=_resolve_timestamp(timestamp), payload=normalized_payload)
+
+
+def make_behavior_presence_event(
+    presence: str,
+    *,
+    source: str = "camera_v1",
+    confidence: float | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    return _build_event(
+        "user_presence_updated",
+        timestamp=timestamp,
+        presence=presence,
+        source=source,
+        confidence=_normalize_confidence(confidence),
+    )
+
+
+def make_behavior_attention_event(
+    attention: str,
+    *,
+    behavior: str,
+    source: str = "camera_v1",
+    confidence: float | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    return _build_event(
+        "user_attention_updated",
+        timestamp=timestamp,
+        attention=attention,
+        behavior=behavior,
+        source=source,
+        confidence=_normalize_confidence(confidence),
+    )
+
+
+def make_behavior_signal_event(
+    behavior_signal: str,
+    *,
     confidence: float | None = None,
     frame_id: int | str | None = None,
     bbox: dict[str, Any] | None = None,
@@ -27,49 +64,60 @@ def make_posture_event(
     source: str = "camera_v1",
     timestamp: int | None = None,
 ) -> Event:
-    ts = int(time.time()) if timestamp is None else int(timestamp)
-    payload: dict[str, Any] = {"posture": posture, "source": source}
-
-    if confidence is not None:
-        payload["confidence"] = float(confidence)
-    if frame_id is not None:
-        payload["frame_id"] = frame_id
-    if bbox is not None:
-        payload["bbox"] = bbox
-    if duration_sec is not None:
-        payload["duration_sec"] = float(duration_sec)
-    if person_id is not None:
-        payload["person_id"] = person_id
-    if keypoints_summary is not None:
-        payload["keypoints_summary"] = keypoints_summary
-    if severity is not None:
-        payload["severity"] = severity
-
-    return Event(type="user_posture_updated", timestamp=ts, payload=payload)
+    return _build_event(
+        "user_behavior_signal_updated",
+        timestamp=timestamp,
+        behavior_signal=behavior_signal,
+        source=source,
+        confidence=_normalize_confidence(confidence),
+        frame_id=frame_id,
+        bbox=bbox,
+        duration_sec=float(duration_sec) if duration_sec is not None else None,
+        person_id=person_id,
+        keypoints_summary=keypoints_summary,
+        severity=severity,
+    )
 
 
-def make_posture_summary_event(
-    posture: str,
+def make_behavior_summary_event(
+    behavior_signal: str,
     accumulated_sec: float,
+    *,
     confidence: float | None = None,
     source: str = "camera_v1",
     timestamp: int | None = None,
 ) -> Event:
-    ts = int(time.time()) if timestamp is None else int(timestamp)
-    payload = {
-        "posture": posture,
-        "accumulated_sec": float(accumulated_sec),
-        "source": source,
-    }
-    if confidence is not None:
-        payload["confidence"] = float(confidence)
-
-    return Event(type="user_posture_summary", timestamp=ts, payload=payload)
+    return _build_event(
+        "user_behavior_summary_updated",
+        timestamp=timestamp,
+        behavior_signal=behavior_signal,
+        accumulated_sec=float(accumulated_sec),
+        source=source,
+        confidence=_normalize_confidence(confidence),
+    )
 
 
-# =========================
-# emotion（RAF-DB）
-# =========================
+def make_fatigue_event(
+    fatigue_level: str,
+    *,
+    source: str,
+    confidence: float | None = None,
+    perclos: float | None = None,
+    yawn_in_window: bool | None = None,
+    window_sec: int | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    return _build_event(
+        "user_fatigue_updated",
+        timestamp=timestamp,
+        fatigue_level=fatigue_level,
+        source=source,
+        confidence=_normalize_confidence(confidence),
+        perclos=perclos,
+        yawn_in_window=yawn_in_window,
+        window_sec=window_sec,
+    )
+
 
 RAF_DB_LABELS: dict[int, str] = {
     1: "surprise",
@@ -103,84 +151,120 @@ def user_emotion_updated_from_rafdb(
 ) -> Event:
     raf_emotion = _resolve_raf_emotion(label_id=label_id, label_name=label_name)
     agent_emotion = RAF_TO_AGENT_EMOTION.get(raf_emotion, "neutral")
-
-    payload: dict[str, object] = {
-        "emotion": agent_emotion,
-        "confidence": _normalize_confidence(confidence),
-        "source": source,
-        "model": "raf-db",
-        "raf_emotion": raf_emotion,
-    }
-
-    if label_id is not None:
-        payload["raf_label_id"] = label_id
-    if person_id:
-        payload["person_id"] = person_id
-
-    return Event(type="user_emotion_updated", timestamp=timestamp, payload=payload)
+    return _build_event(
+        "user_emotion_updated",
+        timestamp=timestamp,
+        emotion=agent_emotion,
+        confidence=_normalize_confidence(confidence),
+        source=source,
+        model="raf-db",
+        raf_emotion=raf_emotion,
+        raf_label_id=label_id,
+        person_id=person_id,
+    )
 
 
-# =========================
-# display / voice
-# =========================
-
-def display_sensor_updated(
+def make_display_sensor_event(
     *,
-    timestamp: int,
     expression: str,
     source: str,
     brightness: int | None = None,
     fps: int | None = None,
     sensor_values: dict[str, object] | None = None,
     screen_id: str | None = None,
+    timestamp: int | None = None,
 ) -> Event:
-    payload: dict[str, object] = {
-        "expression": expression,
-        "source": source,
-    }
-
-    if brightness is not None:
-        payload["brightness"] = int(brightness)
-    if fps is not None:
-        payload["fps"] = int(fps)
-    if sensor_values:
-        payload["sensor_values"] = sensor_values
-    if screen_id:
-        payload["screen_id"] = screen_id
-
-    return Event(type="display_sensor_updated", timestamp=timestamp, payload=payload)
+    return _build_event(
+        "display_sensor_updated",
+        timestamp=timestamp,
+        expression=expression,
+        source=source,
+        brightness=int(brightness) if brightness is not None else None,
+        fps=int(fps) if fps is not None else None,
+        sensor_values=sensor_values,
+        screen_id=screen_id,
+    )
 
 
-def voice_input_captured(
+def make_speech_recognized_event(
     *,
-    timestamp: int,
     text: str,
     source: str,
     confidence: float | None = None,
     language: str | None = None,
     is_final: bool = True,
     audio_id: str | None = None,
+    session_id: str | None = None,
+    timestamp: int | None = None,
 ) -> Event:
-    payload: dict[str, object] = {
-        "text": text,
-        "source": source,
-        "is_final": bool(is_final),
-    }
-
-    normalized_confidence = _normalize_confidence(confidence)
-    if normalized_confidence is not None:
-        payload["confidence"] = normalized_confidence
-    if language:
-        payload["language"] = language
-    if audio_id:
-        payload["audio_id"] = audio_id
-
-    return Event(type="voice_input_captured", timestamp=timestamp, payload=payload)
+    return _build_event(
+        "speech_recognized",
+        timestamp=timestamp,
+        text=text,
+        source=source,
+        confidence=_normalize_confidence(confidence),
+        language=language,
+        is_final=bool(is_final),
+        audio_id=audio_id,
+        session_id=session_id,
+    )
 
 
-# =========================
-# utils
-# =========================
+def make_light_level_event(
+    *,
+    light_lux: int,
+    source: str,
+    level: str | None = None,
+    is_low_light: bool | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    return _build_event(
+        "light_level_updated",
+        timestamp=timestamp,
+        light_lux=int(light_lux),
+        source=source,
+        level=level,
+        is_low_light=is_low_light,
+    )
+
+
+def make_temperature_humidity_event(
+    *,
+    temperature_c: float,
+    humidity_pct: float,
+    source: str,
+    temperature_level: str | None = None,
+    humidity_level: str | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    return _build_event(
+        "temperature_humidity_updated",
+        timestamp=timestamp,
+        temperature_c=float(temperature_c),
+        humidity_pct=float(humidity_pct),
+        source=source,
+        temperature_level=temperature_level,
+        humidity_level=humidity_level,
+    )
+
+
+def make_noise_level_event(
+    *,
+    noise_db: int,
+    source: str,
+    level: str | None = None,
+    is_noisy: bool | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    return _build_event(
+        "noise_level_updated",
+        timestamp=timestamp,
+        noise_db=int(noise_db),
+        source=source,
+        level=level,
+        is_noisy=is_noisy,
+    )
+
 
 def _resolve_raf_emotion(*, label_id: int | None, label_name: str | None) -> str:
     if label_name:
@@ -194,4 +278,3 @@ def _normalize_confidence(confidence: float | None) -> float | None:
     if confidence is None:
         return None
     return max(0.0, min(1.0, float(confidence)))
-  

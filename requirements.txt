@@ -1,2 +1,9 @@
+opencv-python-headless>=4.8.0
+mediapipe>=0.10.9
+
+# 情绪分类（仅当提供 --raf-ckpt 时需要）
+torch>=2.0.0
+torchvision>=0.15.0
+
 # 核心与单测（几何疲劳算法用 numpy）
 numpy>=1.24.0

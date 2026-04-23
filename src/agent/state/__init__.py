@@ -11,11 +11,13 @@ from src.agent.state.focus_state import FocusState
 from src.agent.state.interaction_state import InteractionState
 from src.agent.state.memory_state import MemoryState
 from src.agent.state.types import (
-    CurrentActivity,
     DialogueState,
+    LightState,
     Mode,
     UserAttention,
+    UserBehavior,
     UserEmotion,
+    UserFatigueLevel,
     UserPresence,
 )
 from src.agent.state.user_state import UserState
@@ -23,15 +25,17 @@ from src.agent.state.user_state import UserState
 __all__ = [
     "AgentState",
     "CooldownState",
-    "CurrentActivity",
     "DialogueState",
     "EnvironmentState",
     "FocusState",
     "InteractionState",
+    "LightState",
     "MemoryState",
     "Mode",
     "UserAttention",
+    "UserBehavior",
     "UserEmotion",
+    "UserFatigueLevel",
     "UserPresence",
     "UserState",
 ]
