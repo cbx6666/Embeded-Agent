@@ -7,10 +7,9 @@
 from src.agent.action.action_model import Action
 from src.agent.action.factories import (
     display,
-    environment_alert,
     none_action,
-    play_voice,
     render_pet_expression,
+    set_light_state,
     set_tts_speed,
     set_tts_voice,
     set_tts_volume,
@@ -26,10 +25,9 @@ __all__ = [
     "Action",
     "ActionType",
     "display",
-    "environment_alert",
     "none_action",
-    "play_voice",
     "render_pet_expression",
+    "set_light_state",
     "set_tts_speed",
     "set_tts_voice",
     "set_tts_volume",

@@ -44,7 +44,7 @@ class AgentCore:
             previous_state = AgentState.from_dict(self.state.to_dict())
             self.state = reduce_state(self.state, event)
             self.memory_service.record_event(self.state, event)
-            if event.type == "user_text_input":
+            if event.type in {"user_text_input", "speech_recognized"}:
                 text = str(event.payload.get("text", "")).strip()
                 if text:
                     self.memory_service.record_message(
@@ -90,22 +90,29 @@ class AgentCore:
                 self.timer_service.stop()
                 continue
 
-            if action.type in {"speak", "display"}:
+            if action.type in {"speak", "display", "render_pet_expression", "set_light_state"}:
                 self.output.execute(action)
-                self.memory_service.record_message(
-                    self.state,
-                    role="agent" if action.type == "speak" else "display",
-                    text=str(action.payload.get("text", "")),
-                    timestamp=action_ts,
-                )
+                text = str(action.payload.get("text", "")).strip()
+                if text and action.type in {"speak", "display"}:
+                    role = "agent" if action.type == "speak" else "display"
+                    self.memory_service.record_message(
+                        self.state,
+                        role=role,
+                        text=text,
+                        timestamp=action_ts,
+                    )
                 self.state.interaction.last_agent_response_time = action_ts
-                self.state.interaction.dialogue_state = "idle"
+                if action.type in {"speak", "display"}:
+                    self.state.interaction.dialogue_state = "idle"
                 self._mark_cooldown_if_needed(action, action_ts)
+                continue
 
     def _mark_cooldown_if_needed(self, action: Action, action_ts: int) -> None:
-        kind = action.payload.get("kind")
-        if kind in {"rest_reminder", "focus_complete"}:
-            self.state.cooldown.reminder_last_ts[str(kind)] = action_ts
+        if action.payload.get("kind") != "notification":
+            return
+        reason = action.payload.get("reason")
+        if reason:
+            self.state.cooldown.reminder_last_ts[str(reason)] = action_ts
 
     def _on_timer_tick(self, remaining_sec: int) -> None:
         event_type = "timer_finished" if remaining_sec <= 0 else "timer_ticked"

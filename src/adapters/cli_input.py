@@ -20,6 +20,11 @@ HELP_TEXT = """可用命令：
     /mock attention focused
     /mock attention distracted
     /mock attention idle
+    /mock behavior working
+    /mock behavior phone_use
+    /mock behavior staring
+    /mock behavior desk_rest
+    /mock behavior away
     /mock emotion neutral
     /mock emotion tired
     /mock emotion stressed

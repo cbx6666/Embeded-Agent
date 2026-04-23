@@ -15,7 +15,7 @@ import time
 import traceback
 from typing import Any, Protocol
 
-from src.agent.event import Event, user_emotion_updated_from_rafdb
+from src.agent.event import Event, make_fatigue_event, user_emotion_updated_from_rafdb
 
 from .config import VisionAffectConfig
 from .emotion_torch import RafEmotionBackend
@@ -146,16 +146,13 @@ class VisionAffectInputAdapter:
     def _emit_fatigue(self, level: FatigueLevel, perclos: float) -> None:
         ts = int(time.time())
         self._sink.handle_event(
-            Event(
-                type="user_fatigue_updated",
+            make_fatigue_event(
+                fatigue_level=level,
+                perclos=round(float(perclos), 4),
+                yawn_in_window=False,
+                window_sec=int(self._perclos.window_sec),
+                source=self._cfg.fatigue_event_source,
                 timestamp=ts,
-                payload={
-                    "fatigue_level": level,
-                    "perclos": round(float(perclos), 4),
-                    "yawn_in_window": False,
-                    "window_sec": int(self._perclos.window_sec),
-                    "source": self._cfg.fatigue_event_source,
-                },
             )
         )
 

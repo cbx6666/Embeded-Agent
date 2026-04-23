@@ -23,6 +23,8 @@
 ## 设计原则
 
 - 状态、事件、动作分离
+- `Event` 表示模块上报的事实或执行结果
+- `Action` 表示内核下发的能力命令
 - adapters 只负责适配，不负责定义领域模型
 - reducer 与 policy 分离
 - 核心逻辑不直接依赖真实硬件
@@ -31,10 +33,10 @@
 ## 具体例子
 
 - 状态例子：`state.focus.active = True`
-- 事件例子：`Event(type="user_presence_updated", payload={"presence": "away"})`
-- 动作例子：`Action(type="display", payload={"text": "用户已离席"})`
+- 事件例子：`Event(type="speech_recognized", payload={"text": "开始专注 25 分钟"})`
+- 动作例子：`Action(type="display", payload={"text": "专注倒计时已启动", "kind": "notification"})`
 
 ## 多人协作：内核与适配器
 
-- **不写内核、只接硬件/算法的一端**：只维护 **`event`/`action` 的 types 与 factories**、**`adapters/`**、**`docs/<主题>_integration.md`**；**现阶段不要改** `reducer` / `policy` / `core` / `state` / `memory_service`，详见 **`docs/team_integration_guide.md`**。  
-- **写内核**：在协作者契约稳定后，维护 `reducer` / `policy` / `core`（先 `reduce_state` 再 `decide_actions` 再 `_execute_actions`；`policy` 不直接改状态），按需扩展 `state` 与记忆，并补充测试。
+- 输入 / 输出侧协作者：优先维护 `event` / `action` 的 types、factories 和 `adapters/`，不要把业务策略写进适配层。
+- 内核协作者：维护 `state` / `reducer` / `policy` / `core`，保证“先归约状态，再决策动作，再执行动作”的流程稳定。

@@ -12,10 +12,11 @@
 ## 文件说明
 
 - `cli_input.py`：命令行输入适配器
-- `mock_input.py`：将 `/mock ...` 命令转换为状态更新事件（含 `emotion`、`fatigue`）
+- `mock_input.py`：将 `/mock ...` 命令转换为状态更新事件（含 `presence`、`attention`、`behavior`、`emotion`、`fatigue`）
 - `console_output.py`：将 `speak`、`display` 动作映射为控制台输出
-- `pet_display.py`：桌宠显示适配器；消费 `display` / `render_pet_expression`，并可上报 `display_sensor_updated`
-- `voice_adapter.py`：语音输入输出适配器；上报 `voice_input_captured`，消费 `speak` / `play_voice`
+- `pet_display.py`：桌宠显示适配器；消费 `display` / `render_pet_expression` / `set_light_state`，并上报 `display_sensor_updated`
+- `voice_adapter.py`：语音输入输出适配器；上报 `speech_recognized`，消费 `speak`
+- `behavior_adapter.py`：行为识别适配器；发出行为线索与行为汇总事件
 - `vision_affect/`：**唯一**承载摄像头检测逻辑（MediaPipe、EAR/PERCLOS、可选 ResNet18）；向上只发 **`user_fatigue_updated` / `user_emotion_updated`**。可调参数见包内 **`VisionAffectConfig`**。**不使用 YOLO**；内核不实现、也不应依赖本包内部算法。
 
 ## 视觉可选依赖
