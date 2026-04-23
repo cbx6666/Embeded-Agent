@@ -10,8 +10,6 @@ EventType = Literal[
     # behavior
     "user_presence_updated",
     "user_attention_updated",
-    "user_behavior_signal_updated",
-    "user_behavior_summary_updated",
     "user_emotion_updated",
     "user_fatigue_updated",
 

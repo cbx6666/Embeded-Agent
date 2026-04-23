@@ -51,52 +51,6 @@ def make_behavior_attention_event(
     )
 
 
-def make_behavior_signal_event(
-    behavior_signal: str,
-    *,
-    confidence: float | None = None,
-    frame_id: int | str | None = None,
-    bbox: dict[str, Any] | None = None,
-    duration_sec: float | None = None,
-    person_id: str | int | None = None,
-    keypoints_summary: dict[str, Any] | None = None,
-    severity: str | None = None,
-    source: str = "camera_v1",
-    timestamp: int | None = None,
-) -> Event:
-    return _build_event(
-        "user_behavior_signal_updated",
-        timestamp=timestamp,
-        behavior_signal=behavior_signal,
-        source=source,
-        confidence=_normalize_confidence(confidence),
-        frame_id=frame_id,
-        bbox=bbox,
-        duration_sec=float(duration_sec) if duration_sec is not None else None,
-        person_id=person_id,
-        keypoints_summary=keypoints_summary,
-        severity=severity,
-    )
-
-
-def make_behavior_summary_event(
-    behavior_signal: str,
-    accumulated_sec: float,
-    *,
-    confidence: float | None = None,
-    source: str = "camera_v1",
-    timestamp: int | None = None,
-) -> Event:
-    return _build_event(
-        "user_behavior_summary_updated",
-        timestamp=timestamp,
-        behavior_signal=behavior_signal,
-        accumulated_sec=float(accumulated_sec),
-        source=source,
-        confidence=_normalize_confidence(confidence),
-    )
-
-
 def make_fatigue_event(
     fatigue_level: str,
     *,

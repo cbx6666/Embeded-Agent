@@ -68,7 +68,14 @@ class AgentCore:
             history = {
                 "recent_events": self.state.memory.recent_events,
                 "recent_messages": self.state.memory.recent_messages,
+                "reminder_records": self.state.memory.reminder_records,
+                "attention_records": self.state.memory.attention_records,
+                "environment_records": self.state.memory.environment_records,
                 "focus_sessions": self.state.memory.focus_sessions,
+                "focus_session_count": self.state.memory.focus_session_count,
+                "focus_total_duration_sec": self.state.memory.focus_total_duration_sec,
+                "distraction_event_count": self.state.memory.distraction_event_count,
+                "state_change_counts": self.state.memory.state_change_counts,
                 "emotion_samples": self.state.memory.emotion_samples,
                 "emotion_summaries": self.state.memory.emotion_summaries,
             }
@@ -90,8 +97,12 @@ class AgentCore:
                 self.timer_service.stop()
                 continue
 
-            if action.type in {"speak", "display", "render_pet_expression", "set_light_state"}:
-                self.output.execute(action)
+            if action.type == "none":
+                continue
+
+            self.output.execute(action)
+            self.memory_service.record_action(self.state, action.type, action.payload, action_ts)
+            if action.type in {"speak", "display", "render_pet_expression", "set_light_state", "start_voice_capture", "stop_voice_capture", "set_tts_voice", "set_tts_volume", "set_tts_speed"}:
                 text = str(action.payload.get("text", "")).strip()
                 if text and action.type in {"speak", "display"}:
                     role = "agent" if action.type == "speak" else "display"

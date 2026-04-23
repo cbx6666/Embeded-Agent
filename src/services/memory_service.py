@@ -15,6 +15,9 @@ class MemoryService:
         self,
         max_recent_events: int = 20,
         max_recent_messages: int = 20,
+        max_reminder_records: int = 50,
+        max_attention_records: int = 120,
+        max_environment_records: int = 120,
         max_focus_sessions: int = 10,
         max_emotion_samples: int = 120,
         max_emotion_summaries: int = 60,
@@ -22,6 +25,9 @@ class MemoryService:
     ) -> None:
         self.max_recent_events = max_recent_events
         self.max_recent_messages = max_recent_messages
+        self.max_reminder_records = max_reminder_records
+        self.max_attention_records = max_attention_records
+        self.max_environment_records = max_environment_records
         self.max_focus_sessions = max_focus_sessions
         self.max_emotion_samples = max_emotion_samples
         self.max_emotion_summaries = max_emotion_summaries
@@ -38,6 +44,12 @@ class MemoryService:
         if event.type == "user_emotion_updated":
             self._record_emotion_sample(state, event)
             self._maybe_rollup_emotion_summary(state, event.timestamp)
+        if event.type in {"user_presence_updated", "user_attention_updated", "user_emotion_updated", "user_fatigue_updated"}:
+            self._record_state_change(state, event)
+        if event.type == "user_attention_updated":
+            self._record_attention_event(state, event)
+        if event.type in {"light_level_updated", "temperature_humidity_updated", "noise_level_updated"}:
+            self._record_environment_event(state, event)
 
     def record_message(
         self,
@@ -54,12 +66,57 @@ class MemoryService:
             }
         )
 
+    def record_action(self, state: AgentState, action_type: str, payload: dict[str, object], timestamp: int) -> None:
+        if payload.get("kind") != "notification":
+            return
+        state.memory.reminder_records.append(
+            {
+                "action_type": action_type,
+                "timestamp": timestamp,
+                "reason": payload.get("reason"),
+                "level": payload.get("level"),
+                "text": payload.get("text"),
+                "status": payload.get("status"),
+                "state": payload.get("state"),
+            }
+        )
+
     def trim(self, state: AgentState) -> None:
         state.memory.recent_events = state.memory.recent_events[-self.max_recent_events :]
         state.memory.recent_messages = state.memory.recent_messages[-self.max_recent_messages :]
+        state.memory.reminder_records = state.memory.reminder_records[-self.max_reminder_records :]
+        state.memory.attention_records = state.memory.attention_records[-self.max_attention_records :]
+        state.memory.environment_records = state.memory.environment_records[-self.max_environment_records :]
         state.memory.focus_sessions = state.memory.focus_sessions[-self.max_focus_sessions :]
         state.memory.emotion_samples = state.memory.emotion_samples[-self.max_emotion_samples :]
         state.memory.emotion_summaries = state.memory.emotion_summaries[-self.max_emotion_summaries :]
+
+    def _record_state_change(self, state: AgentState, event: Event) -> None:
+        state.memory.state_change_counts[event.type] = state.memory.state_change_counts.get(event.type, 0) + 1
+
+    def _record_attention_event(self, state: AgentState, event: Event) -> None:
+        attention = str(event.payload.get("attention", "idle"))
+        behavior = str(event.payload.get("behavior", "unknown"))
+        state.memory.attention_records.append(
+            {
+                "timestamp": event.timestamp,
+                "attention": attention,
+                "behavior": behavior,
+                "confidence": event.payload.get("confidence"),
+                "source": event.payload.get("source"),
+            }
+        )
+        if attention == "distracted":
+            state.memory.distraction_event_count += 1
+
+    def _record_environment_event(self, state: AgentState, event: Event) -> None:
+        state.memory.environment_records.append(
+            {
+                "type": event.type,
+                "timestamp": event.timestamp,
+                "payload": event.payload,
+            }
+        )
 
     def _record_emotion_sample(self, state: AgentState, event: Event) -> None:
         """记录单条情绪样本，用于短时间窗口统计。"""

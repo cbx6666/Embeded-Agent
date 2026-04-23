@@ -9,8 +9,6 @@ from src.agent.event.event_model import Event
 from src.agent.event.factories import (
     make_behavior_attention_event,
     make_behavior_presence_event,
-    make_behavior_signal_event,
-    make_behavior_summary_event,
     make_display_sensor_event,
     make_fatigue_event,
     make_light_level_event,
@@ -26,8 +24,6 @@ __all__ = [
     "EventType",
     "make_behavior_attention_event",
     "make_behavior_presence_event",
-    "make_behavior_signal_event",
-    "make_behavior_summary_event",
     "make_display_sensor_event",
     "make_fatigue_event",
     "make_light_level_event",
