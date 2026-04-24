@@ -9,10 +9,12 @@ from src.agent.event.event_model import Event
 
 
 def _resolve_timestamp(timestamp: int | None) -> int:
+    """解析事件时间戳；为空时使用当前时间。"""
     return int(time.time()) if timestamp is None else int(timestamp)
 
 
 def _build_event(event_type: str, timestamp: int | None = None, **payload: Any) -> Event:
+    """构造标准事件，并自动剔除值为 None 的字段。"""
     normalized_payload = {key: value for key, value in payload.items() if value is not None}
     return Event(type=event_type, timestamp=_resolve_timestamp(timestamp), payload=normalized_payload)
 
@@ -24,6 +26,7 @@ def make_behavior_presence_event(
     confidence: float | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造用户在场状态更新事件。"""
     return _build_event(
         "user_presence_updated",
         timestamp=timestamp,
@@ -41,6 +44,7 @@ def make_behavior_attention_event(
     confidence: float | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造用户注意力与行为更新事件。"""
     return _build_event(
         "user_attention_updated",
         timestamp=timestamp,
@@ -61,6 +65,7 @@ def make_fatigue_event(
     window_sec: int | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造疲劳状态更新事件。"""
     return _build_event(
         "user_fatigue_updated",
         timestamp=timestamp,
@@ -103,6 +108,7 @@ def user_emotion_updated_from_rafdb(
     person_id: str | None = None,
     source: str = "camera",
 ) -> Event:
+    """将 RAF-DB 输出转换为系统标准情绪事件。"""
     raf_emotion = _resolve_raf_emotion(label_id=label_id, label_name=label_name)
     agent_emotion = RAF_TO_AGENT_EMOTION.get(raf_emotion, "neutral")
     return _build_event(
@@ -128,6 +134,7 @@ def make_display_sensor_event(
     screen_id: str | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造显示设备状态快照事件。"""
     return _build_event(
         "display_sensor_updated",
         timestamp=timestamp,
@@ -151,6 +158,7 @@ def make_speech_recognized_event(
     session_id: str | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造语音识别结果事件。"""
     return _build_event(
         "speech_recognized",
         timestamp=timestamp,
@@ -172,6 +180,7 @@ def make_light_level_event(
     is_low_light: bool | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造环境光照更新事件。"""
     return _build_event(
         "light_level_updated",
         timestamp=timestamp,
@@ -191,6 +200,7 @@ def make_temperature_humidity_event(
     humidity_level: str | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造温湿度更新事件。"""
     return _build_event(
         "temperature_humidity_updated",
         timestamp=timestamp,
@@ -210,6 +220,7 @@ def make_noise_level_event(
     is_noisy: bool | None = None,
     timestamp: int | None = None,
 ) -> Event:
+    """构造噪声等级更新事件。"""
     return _build_event(
         "noise_level_updated",
         timestamp=timestamp,
@@ -221,6 +232,7 @@ def make_noise_level_event(
 
 
 def _resolve_raf_emotion(*, label_id: int | None, label_name: str | None) -> str:
+    """解析 RAF-DB 标签，得到统一情绪名称。"""
     if label_name:
         return label_name.strip().lower()
     if label_id is None:
@@ -229,6 +241,7 @@ def _resolve_raf_emotion(*, label_id: int | None, label_name: str | None) -> str
 
 
 def _normalize_confidence(confidence: float | None) -> float | None:
+    """将置信度裁剪到 0 到 1 之间。"""
     if confidence is None:
         return None
     return max(0.0, min(1.0, float(confidence)))

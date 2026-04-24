@@ -22,7 +22,7 @@ IntentType = Literal[
 
 @dataclass
 class AgentIntent:
-    """Planner 输出的中间意图，不直接映射执行层。"""
+    """Planner 输出的中间语义层，不直接绑定具体动作。"""
 
     type: IntentType
     priority: int = 0

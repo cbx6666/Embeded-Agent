@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-"""状态归约模块。
-
-本模块只负责“事件如何更新状态”，不负责决定要不要输出动作。
-"""
+"""状态归约模块。"""
 
 from src.agent.event import Event
 from src.agent.state import AgentState
 
 
 def reduce_state(state: AgentState, event: Event) -> AgentState:
-    """根据事件直接在当前状态对象上完成归约更新。"""
+    """根据事件内容直接更新当前状态对象。"""
     if event.type in {"user_text_input", "speech_recognized"}:
         _handle_user_input_event(state, event)
     elif event.type == "focus_start_requested":
@@ -59,6 +56,7 @@ def reduce_state(state: AgentState, event: Event) -> AgentState:
 
 
 def _handle_user_input_event(state: AgentState, event: Event) -> None:
+    """根据用户输入更新对话活跃状态和最后输入时间。"""
     text = str(event.payload.get("text", "")).strip()
     state.interaction.in_conversation = bool(text)
     state.interaction.dialogue_state = "thinking" if text else "idle"
@@ -66,6 +64,7 @@ def _handle_user_input_event(state: AgentState, event: Event) -> None:
 
 
 def _handle_focus_start_requested(state: AgentState, event: Event) -> None:
+    """启动一轮新的专注状态。"""
     if state.focus.active:
         return
 
@@ -81,11 +80,14 @@ def _handle_focus_start_requested(state: AgentState, event: Event) -> None:
 
 
 def _handle_focus_stop_requested(state: AgentState, event: Event) -> None:
+    """结束当前专注状态并记录专注会话。"""
     if not state.focus.active:
         return
     _complete_focus_session(state, event.timestamp, reason="manual_stop")
 
+
 def _handle_timer_ticked(state: AgentState, event: Event) -> None:
+    """根据 timer tick 更新专注剩余时间和已用时长。"""
     if not state.focus.active or state.focus.start_ts is None:
         return
 
@@ -94,12 +96,14 @@ def _handle_timer_ticked(state: AgentState, event: Event) -> None:
 
 
 def _handle_timer_finished(state: AgentState, event: Event) -> None:
+    """在专注计时结束时关闭本轮专注。"""
     if not state.focus.active:
         return
     _complete_focus_session(state, event.timestamp, reason="timer_complete")
 
 
 def _complete_focus_session(state: AgentState, end_ts: int, reason: str) -> None:
+    """归档当前专注会话并重置专注相关状态。"""
     start_ts = state.focus.start_ts
     target_duration_sec = state.focus.target_duration_sec or 0
     actual_duration_sec = 0 if start_ts is None else max(0, end_ts - start_ts)
@@ -129,18 +133,21 @@ def _complete_focus_session(state: AgentState, end_ts: int, reason: str) -> None
 
 
 def _optional_int(value: object) -> int | None:
+    """将可选输入安全转换为整数。"""
     if value is None:
         return None
     return int(value)
 
 
 def _optional_float(value: object) -> float | None:
+    """将可选输入安全转换为浮点数。"""
     if value is None:
         return None
     return float(value)
 
 
 def _optional_str(value: object) -> str | None:
+    """将可选输入安全转换为字符串。"""
     if value is None:
         return None
     return str(value)
