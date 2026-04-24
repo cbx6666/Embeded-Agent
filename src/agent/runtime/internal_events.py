@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+"""动作结果到内部事件的回流转换。"""
+
 from src.agent.action import Action
-from src.agent.action_result import ActionResult
 from src.agent.event import Event
+from src.agent.runtime.action_result import ActionResult
 from src.agent.state import AgentState
 
 
@@ -12,6 +14,7 @@ def build_internal_events_from_results(
     actions: list[Action],
     results: list[ActionResult],
 ) -> list[Event]:
+    """根据动作执行结果保守地生成内部事件。"""
     del state
 
     if not actions or all(action.type == "none" for action in actions):
@@ -69,6 +72,7 @@ def build_internal_events_from_results(
 
 
 def _failure_events(results: list[ActionResult]) -> list[Event]:
+    """把失败的动作结果转换为 action_failed 内部事件。"""
     failure_events: list[Event] = []
     for result in results:
         if result.success:
@@ -89,6 +93,7 @@ def _failure_events(results: list[ActionResult]) -> list[Event]:
 
 
 def _event_timestamp(event: Event, results: list[ActionResult]) -> int:
+    """优先使用最后一个结果的时间戳，否则回退到原事件时间。"""
     if results:
         return int(results[-1].timestamp)
     return int(event.timestamp)

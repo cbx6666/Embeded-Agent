@@ -1,31 +1,24 @@
 from __future__ import annotations
 
-"""Intent planning layer."""
+"""意图规划层。"""
 
+from src.agent.decision.intent import AgentIntent
+from src.agent.decision.intent_guard import guard_intents
+from src.agent.decision.llm_intent_planner import plan_intents_with_llm
 from src.agent.event import Event
-from src.agent.intent import AgentIntent
 from src.agent.state import AgentState
+from src.services.llm_service import LLMService
 
 TIRED_REMINDER_MIN_FOCUS_SEC = 300
 IDLE_CHECK_MIN_INTERVAL_SEC = 600
-REMINDER_COOLDOWN_SEC = {
-    "rest_reminder": 300,
-    "distraction_reminder": 180,
-    "environment_warning": 300,
-    "fatigue_warning": 300,
-    "idle_check": 600,
-}
 
 
-def plan_intents(
+def build_candidate_intents(
     previous_state: AgentState,
     current_state: AgentState,
     event: Event,
 ) -> list[AgentIntent]:
-    """Plan intents from state transition plus current event."""
-    # planner 的职责是：
-    # 根据“事件 + 状态”判断系统当前想做什么，
-    # 但这里还不直接生成 Action，而是先输出中间层 Intent。
+    """先由规则层生成候选意图，不直接决定具体动作。"""
     if event.type in {"user_text_input", "speech_recognized"}:
         return _plan_user_text_like(current_state, event)
     if event.type == "focus_start_requested":
@@ -73,8 +66,57 @@ def plan_intents(
     return [AgentIntent(type="no_op", reason="unknown_event")]
 
 
+def plan_intents(
+    previous_state: AgentState,
+    current_state: AgentState,
+    event: Event,
+    llm_service: LLMService | None = None,
+) -> list[AgentIntent]:
+    """生成最终意图列表，并在需要时接入 LLM 辅助判断。"""
+    candidates = build_candidate_intents(previous_state, current_state, event)
+
+    if llm_service is not None and _should_use_llm_intent_planner(event, candidates):
+        llm_intents = plan_intents_with_llm(
+            event=event,
+            state=current_state,
+            candidate_intents=candidates,
+            llm_service=llm_service,
+        )
+        return guard_intents(
+            llm_intents,
+            state=current_state,
+            event=event,
+            fallback_intents=candidates,
+        )
+
+    return guard_intents(
+        candidates,
+        state=current_state,
+        event=event,
+        fallback_intents=candidates,
+    )
+
+
+def _should_use_llm_intent_planner(event: Event, candidate_intents: list[AgentIntent]) -> bool:
+    """只在模糊的用户文本输入场景下启用 LLM 意图辅助。"""
+    if not candidate_intents:
+        return False
+    if event.type not in {"user_text_input", "speech_recognized"}:
+        return False
+
+    text = str(event.payload.get("text", "")).strip()
+    if not text:
+        return False
+
+    semantic = _classify_user_text(text)
+    if semantic in {"status_query", "start_focus", "stop_focus"}:
+        return False
+
+    return any(intent.requires_llm for intent in candidate_intents)
+
+
 def _plan_user_text_like(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 用户文本类事件优先做语义分类，再决定是状态问答、专注控制还是普通对话。
+    """先用轻量规则识别文本语义，再决定候选意图。"""
     text = str(event.payload.get("text", "")).strip()
     if not text:
         return [AgentIntent(type="no_op", reason="empty_input")]
@@ -111,8 +153,7 @@ def _plan_user_text_like(current_state: AgentState, event: Event) -> list[AgentI
 
 
 def _plan_timer_tick(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # timer tick 本身不一定要响应，只有满足“专注中 + 疲劳/情绪条件 + 不在冷却中”
-    # 才会触发休息提醒。
+    """在专注进行中检查是否满足休息提醒条件。"""
     if not current_state.focus.active:
         return []
     if _should_trigger_rest_reminder(current_state, event.timestamp):
@@ -128,8 +169,7 @@ def _plan_timer_tick(current_state: AgentState, event: Event) -> list[AgentInten
 
 
 def _plan_attention_feedback(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 注意力更新事件里，只有“分心”才可能升级成提醒；
-    # 否则通常只做低优先级状态反馈。
+    """处理注意力更新事件，必要时升级为分心提醒。"""
     attention = str(event.payload.get("attention", current_state.user.attention))
     if attention != "distracted":
         return [AgentIntent(type="update_status_feedback", priority=5, reason="attention_updated")]
@@ -148,8 +188,7 @@ def _plan_attention_feedback(current_state: AgentState, event: Event) -> list[Ag
 
 
 def _plan_fatigue_feedback(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 疲劳/情绪事件只有在专注场景里才会升级成“建议休息”，
-    # 避免把普通状态变化都变成打扰式提醒。
+    """处理疲劳和情绪变化，必要时转成休息建议。"""
     fatigue = current_state.user.fatigue_level
     emotion = current_state.user.emotion
     if fatigue not in {"moderate", "high"} and emotion not in {"tired", "stressed"}:
@@ -171,8 +210,7 @@ def _plan_fatigue_feedback(current_state: AgentState, event: Event) -> list[Agen
 
 
 def _plan_environment_feedback(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 环境类事件采用低打扰策略：
-    # 有异常才反馈，而且必须经过 cooldown。
+    """处理环境传感器事件，必要时给出低打扰反馈。"""
     if _is_in_cooldown(current_state, "environment_warning", event.timestamp):
         return [AgentIntent(type="no_op", reason="environment_in_cooldown")]
     level = str(event.payload.get("level") or event.payload.get("temperature_level") or "unknown")
@@ -189,8 +227,7 @@ def _plan_environment_feedback(current_state: AgentState, event: Event) -> list[
 
 
 def _plan_system_trigger(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 这里处理的是内部 system_triggered 事件。
-    # 它们不是来自外部输入，而是来自闭环回流或自主检查。
+    """处理内部回流事件和自主检查事件。"""
     trigger = str(event.payload.get("trigger", "")).strip()
 
     if trigger in {"agent_response_completed", "focus_timer_started", "focus_timer_stopped"}:
@@ -222,8 +259,7 @@ def _plan_system_trigger(current_state: AgentState, event: Event) -> list[AgentI
 
 
 def _plan_periodic_check(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 周期检查本身只是“看一眼现在要不要做事”。
-    # away 时直接跳过；专注中才进一步看健康或环境问题。
+    """周期检查先判断专注健康，再判断环境是否需要提醒。"""
     if current_state.user.presence == "away":
         return [AgentIntent(type="no_op", reason="periodic_check_user_away")]
     if current_state.focus.active:
@@ -237,8 +273,7 @@ def _plan_periodic_check(current_state: AgentState, event: Event) -> list[AgentI
 
 
 def _plan_user_idle_check(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # idle check 只在“人在场 + 不在专注 + 不在对话中 + 距离上次输入够久”
-    # 的情况下，给一个低打扰提示。
+    """长时间无输入时，仅生成低打扰的显示型提示。"""
     if current_state.user.presence == "away":
         return [AgentIntent(type="no_op", reason="idle_check_user_away")]
     if current_state.focus.active:
@@ -261,7 +296,7 @@ def _plan_user_idle_check(current_state: AgentState, event: Event) -> list[Agent
             reason="idle_check",
             payload={
                 "response_mode": "fixed_text",
-                "text": "如果需要，我可以帮你继续当前任务或开始一轮专注。",
+                "text": "如果需要，我可以帮助你继续当前任务或开始一轮专注。",
                 "display_only": True,
             },
             requires_llm=False,
@@ -270,8 +305,7 @@ def _plan_user_idle_check(current_state: AgentState, event: Event) -> list[Agent
 
 
 def _plan_focus_health_check(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 专注健康检查优先看是否需要休息，其次看是否分心。
-    # 两类提醒都必须经过在场状态和 cooldown 约束。
+    """专注健康检查优先看疲劳，再看是否分心。"""
     if current_state.user.presence == "away":
         return [AgentIntent(type="no_op", reason="focus_health_user_away")]
     if not current_state.focus.active:
@@ -307,8 +341,7 @@ def _plan_focus_health_check(current_state: AgentState, event: Event) -> list[Ag
 
 
 def _plan_environment_check(current_state: AgentState, event: Event) -> list[AgentIntent]:
-    # 自主环境检查不是逐条传感器事件触发，而是直接从当前 state 里
-    # 读取环境结论，再决定是否给反馈。
+    """直接从当前状态读取环境结论，决定是否需要环境提醒。"""
     if _is_in_cooldown(current_state, "environment_warning", event.timestamp):
         return [AgentIntent(type="no_op", reason="environment_check_in_cooldown")]
 
@@ -327,8 +360,7 @@ def _plan_environment_check(current_state: AgentState, event: Event) -> list[Age
 
 
 def _current_environment_level(state: AgentState) -> str | None:
-    # 把多个环境字段收敛成一个统一的“异常级别”，
-    # 方便 planner 后续只关心“当前环境是否值得提醒”。
+    """将多个环境字段收敛为统一的异常级别。"""
     if state.environment.light_level in {"low", "dark"}:
         return str(state.environment.light_level)
     if state.environment.noise_level in {"high", "noisy"}:
@@ -341,8 +373,7 @@ def _current_environment_level(state: AgentState) -> str | None:
 
 
 def _should_trigger_rest_reminder(state: AgentState, now_ts: int) -> bool:
-    # 休息提醒是一个组合条件：
-    # 专注中、人在场、注意力集中、疲劳/情绪满足条件、专注时间足够长、且不在 cooldown。
+    """统一判断当前是否满足休息提醒条件。"""
     if not state.focus.active or state.focus.start_ts is None:
         return False
     if state.user.presence == "away":
@@ -357,24 +388,34 @@ def _should_trigger_rest_reminder(state: AgentState, now_ts: int) -> bool:
 
 
 def _is_in_cooldown(state: AgentState, reason: str, now_ts: int) -> bool:
-    # planner 侧统一用这个函数判断提醒是否还在冷却期内。
+    """判断某类提醒是否仍处于冷却期。"""
     last_ts = state.cooldown.reminder_last_ts.get(reason)
     if last_ts is None:
         return False
-    cooldown_sec = REMINDER_COOLDOWN_SEC.get(reason, 300)
+    cooldown_sec = _cooldown_seconds(reason)
     return now_ts - int(last_ts) < cooldown_sec
 
 
+def _cooldown_seconds(reason: str) -> int:
+    """返回不同提醒原因对应的冷却时长。"""
+    if reason == "distraction_reminder":
+        return 180
+    if reason == "idle_check":
+        return 600
+    return 300
+
+
 def _only_no_op(intents: list[AgentIntent]) -> bool:
+    """判断一组意图是否只有 no_op。"""
     return not intents or all(intent.type == "no_op" for intent in intents)
 
 
 def _classify_user_text(text: str) -> str:
-    # 这里先用轻量规则做语义分类，避免所有用户输入都依赖 LLM。
+    """用轻量规则做语义分类，避免所有输入都依赖 LLM。"""
     lowered = text.strip().lower()
     if any(keyword in lowered for keyword in ("现在状态如何", "当前状态", "state", "status", "情绪", "疲劳")):
         return "status_query"
-    if any(keyword in lowered for keyword in ("开始专注", "开始番茄", "start focus")):
+    if any(keyword in lowered for keyword in ("开始专注", "开始番茄", "继续学", "继续学习", "start focus")):
         return "start_focus"
     if any(keyword in lowered for keyword in ("结束专注", "停止专注", "stop focus")):
         return "stop_focus"

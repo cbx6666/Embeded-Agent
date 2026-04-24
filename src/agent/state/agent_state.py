@@ -44,6 +44,7 @@ class AgentState:
             return cls()
 
         def _only_fields(d: dict, dc: type) -> dict:
+            """仅保留目标 dataclass 定义过的字段。"""
             names = {f.name for f in fields(dc)}
             return {k: v for k, v in d.items() if k in names}
 

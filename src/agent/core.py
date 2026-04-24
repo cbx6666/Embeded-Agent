@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Agent core dispatcher."""
+"""Agent 单事件核心调度器。"""
 
 import json
 import threading
@@ -9,11 +9,11 @@ from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
 from src.agent.action import Action
-from src.agent.action_result import ActionResult
+from src.agent.decision.intent import AgentIntent
+from src.agent.decision.policy import decide_actions_with_intents
 from src.agent.event import Event
-from src.agent.intent import AgentIntent
-from src.agent.policy import decide_actions_with_intents
 from src.agent.reducer import reduce_state
+from src.agent.runtime.action_result import ActionResult
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 from src.services.memory_service import MemoryService
@@ -22,7 +22,7 @@ from src.storage.json_store import JsonStore
 
 
 class AgentCore:
-    """Single-event agent core."""
+    """负责处理单个事件的核心调度器。"""
 
     def __init__(
         self,
@@ -32,6 +32,7 @@ class AgentCore:
         llm_service: LLMService,
         store: JsonStore,
     ) -> None:
+        """初始化输出、服务依赖和持久化状态。"""
         self.output = output
         self.timer_service = timer_service
         self.memory_service = memory_service
@@ -43,7 +44,7 @@ class AgentCore:
         self._lock = threading.RLock()
 
     def handle_event(self, event: Event) -> list[Action]:
-        """Process a single event and return actions."""
+        """处理单个事件，并仅返回动作列表。"""
         actions, _ = self.handle_event_with_results(event)
         return actions
 
@@ -51,14 +52,14 @@ class AgentCore:
         self,
         event: Event,
     ) -> tuple[list[Action], list[ActionResult]]:
-        """Process a single event and return actions with action results."""
+        """处理单个事件，并返回动作及其执行结果。"""
         with self._lock:
-            # 先拷贝一份事件发生前的状态，方便 planner 判断“状态如何变化了”，
-            # 而不只是看到 reducer 更新后的结果状态。
+            # 先保留旧状态，供 planner 比较“事件前后”差异使用。
             previous_state = AgentState.from_dict(self.state.to_dict())
             self.state = reduce_state(self.state, event)
             self.memory_service.record_event(self.state, event)
 
+            # 用户输入会写入短期消息记忆，供后续规则和 LLM 使用。
             if event.type in {"user_text_input", "speech_recognized"}:
                 text = str(event.payload.get("text", "")).strip()
                 if text:
@@ -69,15 +70,13 @@ class AgentCore:
                         timestamp=event.timestamp,
                     )
 
-            # 当前策略层分两步：
-            # planner 先产出意图，再由 realizer 把意图落成具体动作。
+            # 先得到意图，再把意图落成动作；AgentCore 不直接拼装动作细节。
             intents, actions = decide_actions_with_intents(
                 previous_state=previous_state,
                 current_state=self.state,
                 event=event,
                 llm_service=self.llm_service,
             )
-            # 等状态和记忆都更新完成后，再执行动作，避免动作阶段读到旧上下文。
             results = self._execute_actions(actions, event.timestamp)
 
             self.last_intents = intents
@@ -87,10 +86,12 @@ class AgentCore:
             return actions, results
 
     def render_state(self) -> str:
+        """将当前状态渲染为格式化 JSON 文本。"""
         with self._lock:
             return json.dumps(self.state.to_dict(), ensure_ascii=False, indent=2)
 
     def render_history(self) -> str:
+        """将当前短期记忆渲染为格式化 JSON 文本。"""
         with self._lock:
             history = {
                 "recent_events": self.state.memory.recent_events,
@@ -109,16 +110,17 @@ class AgentCore:
             return json.dumps(history, ensure_ascii=False, indent=2)
 
     def shutdown(self) -> None:
+        """停止内部服务并持久化当前状态。"""
         with self._lock:
             self.timer_service.stop()
             self.store.save_state(self.state)
 
     def _execute_actions(self, actions: list[Action], action_ts: int) -> list[ActionResult]:
-        # 每个动作都独立执行，并且都要产出一个 ActionResult，
-        # 这样外层闭环才能稳定地基于执行结果生成内部反馈事件。
+        """顺序执行动作列表，并为每个动作生成执行结果。"""
         return [self._execute_action(action, action_ts) for action in actions]
 
     def _execute_action(self, action: Action, action_ts: int) -> ActionResult:
+        """执行单个动作，并将执行结果封装为 ActionResult。"""
         try:
             if action.type == "start_timer":
                 duration_sec = int(action.payload.get("duration_sec", 0))
@@ -150,6 +152,7 @@ class AgentCore:
             self.output.execute(action)
             self.memory_service.record_action(self.state, action.type, action.payload, action_ts)
 
+            # 这类动作既会影响交互状态，也可能需要写回消息记忆和冷却记录。
             if action.type in {
                 "speak",
                 "display",
@@ -161,8 +164,6 @@ class AgentCore:
                 "set_tts_volume",
                 "set_tts_speed",
             }:
-                # 只有面向用户可感知的输出动作，才会写回短期消息记忆
-                # 和最近一次 agent 响应时间等交互状态。
                 text = str(action.payload.get("text", "")).strip()
                 if text and action.type in {"speak", "display"}:
                     role = "agent" if action.type == "speak" else "display"
@@ -183,7 +184,7 @@ class AgentCore:
                 timestamp=action_ts,
                 payload=dict(action.payload),
             )
-        except Exception as exc:  # pragma: no cover - defensive path
+        except Exception as exc:  # pragma: no cover
             return ActionResult(
                 action_type=action.type,
                 success=False,
@@ -193,6 +194,7 @@ class AgentCore:
             )
 
     def _mark_cooldown_if_needed(self, action: Action, action_ts: int) -> None:
+        """在提醒类动作执行后记录对应的冷却时间。"""
         if action.payload.get("kind") != "notification":
             return
         reason = action.payload.get("reason")
@@ -200,8 +202,7 @@ class AgentCore:
             self.state.cooldown.reminder_last_ts[str(reason)] = action_ts
 
     def _on_timer_tick(self, remaining_sec: int) -> None:
-        # timer 回调不会直接改状态，而是重新包装成标准 Event，
-        # 这样定时行为也能走和外部输入完全一致的 reducer / planner / realizer 链路。
+        """将定时器回调重新包装成标准事件并走统一链路。"""
         event_type = "timer_finished" if remaining_sec <= 0 else "timer_ticked"
         event = Event(
             type=event_type,
@@ -216,6 +217,7 @@ def build_default_core(
     timer_background: bool = True,
     output: ConsoleOutput | None = None,
 ) -> AgentCore:
+    """使用默认服务依赖构造一个 AgentCore 实例。"""
     return AgentCore(
         output=output or ConsoleOutput(),
         timer_service=TimerService(background=timer_background),

@@ -1,26 +1,33 @@
 from __future__ import annotations
 
+"""闭环调度器。"""
+
 from collections import deque
+from typing import Any
 
 from src.agent.action import Action
 from src.agent.core import AgentCore
 from src.agent.event import Event
-from src.agent.internal_events import build_internal_events_from_results
-from src.agent.trace import AgentDecisionTrace
+from src.agent.runtime.internal_events import build_internal_events_from_results
+from src.agent.runtime.trace import AgentDecisionTrace
 
 
 class AgentLoop:
+    """管理一轮或多轮内部事件回流的调度器。"""
+
     def __init__(
         self,
         core: AgentCore,
         max_steps: int = 3,
     ) -> None:
+        """初始化闭环调度器及其步数上限。"""
         self.core = core
         self.max_steps = max(1, int(max_steps))
         self.recent_traces: list[AgentDecisionTrace] = []
         self._max_recent_traces = 50
 
     def run_once(self, event: Event) -> list[Action]:
+        """运行一轮完整闭环，直到没有内部事件或达到步数上限。"""
         queue: deque[Event] = deque([event])
         all_actions: list[Action] = []
         step = 0
@@ -48,8 +55,9 @@ class AgentLoop:
         event: Event,
         loop_step: int,
         actions: list[Action],
-        results,
+        results: list[Any],
     ) -> None:
+        """记录单步闭环中的状态、意图、动作与结果。"""
         trace = AgentDecisionTrace(
             event_type=event.type,
             timestamp=event.timestamp,
@@ -87,7 +95,8 @@ class AgentLoop:
         self.recent_traces = self.recent_traces[-self._max_recent_traces :]
 
 
-def _summarize_state(state) -> dict[str, object]:
+def _summarize_state(state: Any) -> dict[str, object]:
+    """抽取与调试相关的关键状态摘要。"""
     return {
         "mode": state.interaction.mode,
         "dialogue_state": state.interaction.dialogue_state,
