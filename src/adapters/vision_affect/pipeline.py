@@ -18,6 +18,8 @@ FatigueLevel = Literal["none", "mild", "moderate", "high"]
 # MediaPipe Face Mesh 常用眼部六点（与 OpenCV + MediaPipe 困倦检测教程一致）
 _RIGHT_EYE_IDX = (33, 160, 158, 133, 153, 144)
 _LEFT_EYE_IDX = (362, 385, 387, 263, 373, 380)
+# 口部外轮廓六点（与常见 MAR / 哈欠检测教程一致，顺序同 EAR 六边形）
+_MOUTH_SIX = (78, 81, 13, 311, 308, 14)
 
 
 def eye_aspect_ratio(landmarks, eye_indices: tuple[int, ...], frame_w: int, frame_h: int) -> float:
@@ -38,6 +40,32 @@ def mean_ear(landmarks, frame_w: int, frame_h: int) -> float:
     r = eye_aspect_ratio(landmarks, _RIGHT_EYE_IDX, frame_w, frame_h)
     l = eye_aspect_ratio(landmarks, _LEFT_EYE_IDX, frame_w, frame_h)
     return (r + l) / 2.0
+
+
+def mouth_aspect_ratio(landmarks, frame_w: int, frame_h: int) -> float:
+    """MAR：打哈欠/张口时口部「垂直」张量相对「水平」宽度变大，同 EAR 式六比。"""
+    return eye_aspect_ratio(landmarks, _MOUTH_SIX, frame_w, frame_h)
+
+
+def mean_mar(landmarks, frame_w: int, frame_h: int) -> float:
+    """与 `mean_ear` 命名对称，单帧口部纵横向比。"""
+    return mouth_aspect_ratio(landmarks, frame_w, frame_h)
+
+
+def combined_fatigue_score(
+    eye_perclos: float,
+    yawn_frame_ratio: float,
+    *,
+    eye_weight: float = 0.55,
+    mouth_weight: float = 0.45,
+) -> float:
+    """将眼部 PERCLOS 与口部打哈欠/张口帧比例融合为 0~1 标量，供滞回分档。"""
+    w0 = max(0.0, min(1.0, float(eye_weight)))
+    w1 = max(0.0, min(1.0, float(mouth_weight)))
+    s = w0 + w1
+    if s < 1e-6:
+        return 0.0
+    return (w0 * max(0.0, min(1.0, eye_perclos)) + w1 * max(0.0, min(1.0, yawn_frame_ratio))) / s
 
 
 def face_bbox_from_landmarks(landmarks, frame_w: int, frame_h: int, margin: float = 0.08) -> tuple[int, int, int, int]:

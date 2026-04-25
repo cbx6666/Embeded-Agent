@@ -14,9 +14,16 @@ class VisionAffectConfig:
 
     camera_index: int = 0
     raf_checkpoint: str | None = None
+    # 情绪推理：默认 `deepface`；`raf` 需 RAF-ResNet 权重；`none` 仅疲劳
+    emotion_backend: str = "deepface"
+    deepface_model: str = "VGG-Face"
 
-    # --- 疲劳：几何与窗口（EAR / PERCLOS 近似）---
+    # --- 疲劳：EAR 闭眼 + MAR 打哈欠/张口 + 两路滑动窗 + 融合滞回 ---
     ear_threshold: float = 0.21
+    mar_yawn_threshold: float = 0.5
+    fatigue_eye_weight: float = 0.55
+    fatigue_mouth_weight: float = 0.45
+    yawn_flag_min_ratio: float = 0.1
     perclos_window_sec: float = 10.0
     fatigue_periodic_emit_sec: float = 3.0
 

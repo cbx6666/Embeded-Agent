@@ -1,7 +1,8 @@
-"""视觉输入适配器：摄像头 + MediaPipe +（可选）ResNet。
+"""视觉输入适配器：摄像头 + MediaPipe Face Mesh + 疲劳 (EAR+MAR) + 情绪 (DeepFace 等)。
 
 职责（对内核不可见）：
-- 采集、人脸网格、EAR/PERCLOS、疲劳档位与滞回、人脸裁剪与情绪推理；
+- EAR 与眼部滑动窗得 PERCLOS；MAR 与口部窗得打哈欠/张口占比；
+- 两路融合后经滞回得到疲劳档位；人脸 crop 上跑情绪模型；
 - 仅通过标准 Event 向上游投递结果。
 
 唯一依赖的内核接口：`handle_event(Event)`（由注入的 sink 提供）。
@@ -15,16 +16,24 @@ import time
 import traceback
 from typing import Any, Protocol
 
-from src.agent.event import Event, make_fatigue_event, user_emotion_updated_from_rafdb
+from src.agent.event import (
+    Event,
+    make_fatigue_event,
+    user_emotion_updated_from_rafdb,
+    user_emotion_updated_standard,
+)
 
+from .backends.factory import build_emotion_backend
+from .backends.protocols import EmotionInferenceBackend, EmotionPredictResult
 from .config import VisionAffectConfig
-from .emotion_torch import RafEmotionBackend
 from .pipeline import (
     FatigueLevel,
     PercLosWindow,
+    combined_fatigue_score,
     face_bbox_from_landmarks,
     map_fatigue_with_hysteresis,
     mean_ear,
+    mean_mar,
     monotonic_ts,
 )
 
@@ -34,6 +43,12 @@ class EventEmitSink(Protocol):
 
     def handle_event(self, event: Event) -> Any:
         ...
+
+
+def _emotion_fingerprint(pr: EmotionPredictResult) -> tuple[int, str]:
+    if pr.raf_label_id is not None:
+        return (pr.raf_label_id, "")
+    return (0, pr.agent_emotion or "")
 
 
 def vision_dependencies_met() -> bool:
@@ -46,6 +61,31 @@ def vision_dependencies_met() -> bool:
         return False
 
 
+def vision_emotion_backend_ready(config: VisionAffectConfig) -> bool:
+    """与 `build_emotion_backend` 的可用性预期一致，用于启动时提示。"""
+    b = (config.emotion_backend or "deepface").strip().lower()
+    if b in {"none", "off", "disabled"}:
+        return True
+    if b in ("raf", "raf-db"):
+        from pathlib import Path
+
+        p = config.raf_checkpoint
+        if not p or not Path(p).is_file():
+            return False
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            return False
+        return True
+    if b == "deepface":
+        try:
+            import deepface  # noqa: F401
+        except ImportError:
+            return False
+        return True
+    return True
+
+
 class VisionAffectInputAdapter:
     """后台线程跑检测逻辑，只向 sink 发 `user_fatigue_updated` / `user_emotion_updated`。"""
 
@@ -53,9 +93,11 @@ class VisionAffectInputAdapter:
         self._sink = sink
         self._cfg = config
         self._ear_threshold = config.ear_threshold
+        self._mar_yawn_threshold = config.mar_yawn_threshold
         self._perclos = PercLosWindow(config.perclos_window_sec)
+        self._yawn_w = PercLosWindow(config.perclos_window_sec)
         self._min_frame_interval = 1.0 / max(config.target_fps, 1.0)
-        self._emotion_backend = RafEmotionBackend(config.raf_checkpoint)
+        self._emotion_backend: EmotionInferenceBackend = build_emotion_backend(config)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_fatigue_level: FatigueLevel = "none"
@@ -63,7 +105,7 @@ class VisionAffectInputAdapter:
         self._frame_counter = 0
         self._emotion_every_n = max(1, config.emotion_every_n_frames)
         self._last_emotion_emit_mon: float = 0.0
-        self._last_emotion_label_id: int | None = None
+        self._last_emotion_fingerprint: tuple[int, str] | None = None
 
     def start_background(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -116,15 +158,31 @@ class VisionAffectInputAdapter:
                     continue
                 lm = res.multi_face_landmarks[0]
                 ear = mean_ear(lm, w, h)
+                mar = mean_mar(lm, w, h)
                 now = monotonic_ts()
                 eye_closed = ear < self._ear_threshold
                 self._perclos.push(now, eye_closed)
-                perclos = self._perclos.ratio()
-                new_level = map_fatigue_with_hysteresis(perclos, self._last_fatigue_level)
+                yawn_mouth = mar > self._mar_yawn_threshold
+                self._yawn_w.push(now, yawn_mouth)
+                eye_p = self._perclos.ratio()
+                yawn_p = self._yawn_w.ratio()
+                combined = combined_fatigue_score(
+                    eye_p,
+                    yawn_p,
+                    eye_weight=self._cfg.fatigue_eye_weight,
+                    mouth_weight=self._cfg.fatigue_mouth_weight,
+                )
+                new_level = map_fatigue_with_hysteresis(combined, self._last_fatigue_level)
                 periodic = (now - self._last_fatigue_emit_mon) >= self._cfg.fatigue_periodic_emit_sec
                 level_changed = new_level != self._last_fatigue_level
                 if level_changed or periodic:
-                    self._emit_fatigue(new_level, perclos)
+                    yawn_flag = yawn_p >= self._cfg.yawn_flag_min_ratio
+                    self._emit_fatigue(
+                        new_level,
+                        perclos=eye_p,
+                        yawn_ratio=yawn_p,
+                        yawn_in_window=yawn_flag,
+                    )
                     self._last_fatigue_level = new_level
                     self._last_fatigue_emit_mon = now
 
@@ -143,13 +201,21 @@ class VisionAffectInputAdapter:
         if sleep_s > 0:
             time.sleep(sleep_s)
 
-    def _emit_fatigue(self, level: FatigueLevel, perclos: float) -> None:
+    def _emit_fatigue(
+        self,
+        level: FatigueLevel,
+        *,
+        perclos: float,
+        yawn_ratio: float,
+        yawn_in_window: bool,
+    ) -> None:
         ts = int(time.time())
         self._sink.handle_event(
             make_fatigue_event(
                 fatigue_level=level,
                 perclos=round(float(perclos), 4),
-                yawn_in_window=False,
+                yawn_ratio=round(float(yawn_ratio), 4),
+                yawn_in_window=yawn_in_window,
                 window_sec=int(self._perclos.window_sec),
                 source=self._cfg.fatigue_event_source,
                 timestamp=ts,
@@ -170,22 +236,34 @@ class VisionAffectInputAdapter:
         crop = frame_bgr[y1:y2, x1:x2]
         if crop.size == 0:
             return
-        label_id, conf = self._emotion_backend.predict(crop)
-        if label_id is None:
+        pr = self._emotion_backend.predict(crop)
+        if pr.is_empty:
             return
-        # 防抖：同类标签且间隔过短则不上报，减轻内核与记忆压力
+        fp = _emotion_fingerprint(pr)
+        # 防抖：同类结果且间隔过短则不上报，减轻内核与记忆压力
         interval_ok = (now_mon - self._last_emotion_emit_mon) >= self._cfg.emotion_min_emit_interval_sec
-        label_changed = label_id != self._last_emotion_label_id
+        label_changed = fp != self._last_emotion_fingerprint
         if not label_changed and not interval_ok:
             return
-        self._last_emotion_label_id = label_id
+        self._last_emotion_fingerprint = fp
         self._last_emotion_emit_mon = now_mon
         ts = int(time.time())
-        self._sink.handle_event(
-            user_emotion_updated_from_rafdb(
-                timestamp=ts,
-                label_id=label_id,
-                confidence=conf,
-                source=self._cfg.emotion_event_source,
+        if pr.raf_label_id is not None:
+            self._sink.handle_event(
+                user_emotion_updated_from_rafdb(
+                    timestamp=ts,
+                    label_id=pr.raf_label_id,
+                    confidence=pr.confidence,
+                    source=self._cfg.emotion_event_source,
+                )
             )
-        )
+        elif pr.agent_emotion is not None:
+            self._sink.handle_event(
+                user_emotion_updated_standard(
+                    timestamp=ts,
+                    emotion=pr.agent_emotion,
+                    confidence=pr.confidence,
+                    source=self._cfg.emotion_event_source,
+                    model="deepface" if (self._cfg.emotion_backend or "").lower() == "deepface" else None,
+                )
+            )

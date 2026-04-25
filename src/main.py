@@ -14,17 +14,30 @@ def main() -> None:
     parser.add_argument(
         "--vision",
         action="store_true",
-        help="启用 MediaPipe 摄像头管线（疲劳 EAR/PERCLOS；情绪需 --raf-ckpt 与 PyTorch）",
+        help="启用 MediaPipe 摄像头管线（疲劳 EAR+MAR；情绪默认 DeepFace，可选 --emotion-backend raf）",
     )
     parser.add_argument("--camera", type=int, default=0, help="摄像头设备索引")
+    parser.add_argument(
+        "--emotion-backend",
+        type=str,
+        default="deepface",
+        help="情绪后端：deepface（默认，需安装 deepface）| raf | none；可用环境变量 EMBED_EMOTION_BACKEND",
+    )
+    parser.add_argument(
+        "--deepface-model",
+        type=str,
+        default="VGG-Face",
+        help="保留字段：DeepFace 当前情绪模型由库内置，该参数备后续扩展。",
+    )
     parser.add_argument(
         "--raf-ckpt",
         type=str,
         default=None,
-        help="可选：RAF-DB ResNet18 权重文件；不设则仅上报疲劳、不上报情绪",
+        help="仅当 --emotion-backend raf 时：RAF-ResNet18 权重路径",
     )
     args = parser.parse_args()
     raf_path = args.raf_ckpt or os.environ.get("RAF_RESNET18_CKPT")
+    emotion_be = (os.environ.get("EMBED_EMOTION_BACKEND") or args.emotion_backend or "deepface").strip()
 
     output = ConsoleOutput()
     cli = CLIInputAdapter()
@@ -36,20 +49,39 @@ def main() -> None:
             VisionAffectConfig,
             VisionAffectInputAdapter,
             vision_dependencies_met,
+            vision_emotion_backend_ready,
         )
 
         if vision_dependencies_met():
-            cfg = VisionAffectConfig(camera_index=args.camera, raf_checkpoint=raf_path)
+            cfg = VisionAffectConfig(
+                camera_index=args.camera,
+                raf_checkpoint=raf_path,
+                emotion_backend=emotion_be,
+                deepface_model=args.deepface_model,
+            )
             vision_adapter = VisionAffectInputAdapter(core, cfg)
             vision_adapter.start_background()
+            em_ok = vision_emotion_backend_ready(cfg)
+            raf_h = f" 情绪：RAF+权重。" if (emotion_be.lower() in {"raf", "raf-db"} and raf_path) else ""
+            df_h = f" 情绪：DeepFace。" if emotion_be.lower() == "deepface" and em_ok else ""
+            none_h = f" 情绪已关闭。" if emotion_be.lower() in {"none", "off", "disabled"} else ""
             output.show_text(
-                "已启动视觉适配器（检测逻辑在 adapters/vision_affect，内核仅收 Event）。"
-                + (" 已配置 RAF 权重。" if raf_path else " 未配置 RAF 权重，仅疲劳事件。")
+                "已启动视觉适配器（adapters/vision_affect，内核只收标准 Event；疲劳 EAR+MAR+融合）。"
+                + (df_h or raf_h or none_h)
+                + (
+                    " 未安装 deepface 或无法导入，仅疲劳/几何事件上报。"
+                    if (emotion_be.lower() == "deepface" and not em_ok)
+                    else ""
+                )
+                + (
+                    " RAF 需有效 --raf-ckpt 与 PyTorch，否则无情绪事件。"
+                    if (emotion_be.lower() in {"raf", "raf-db"} and not em_ok)
+                    else ""
+                )
             )
         else:
             output.show_text(
-                "无法启动视觉适配器：请安装 opencv-python-headless、mediapipe "
-                "（见 requirements-vision.txt）。"
+                "无法启动视觉适配器：请安装 opencv-python-headless、mediapipe（见 requirements.txt）。"
             )
 
     output.show_text("Agent MVP 已启动，输入 /help 查看可用命令。")
