@@ -65,6 +65,7 @@
 - CLI 适配器将“开始专注 25 分钟”翻译为 `focus_start_requested`。
 - mock 适配器将 `/mock emotion tired` 翻译为 `user_emotion_updated`。
 - 摄像头适配器可以将“用户离席”翻译为 `user_presence_updated`。
+- 视觉 `vision_affect` 以 MediaPipe Face Mesh 计算 EAR/MAR 疲劳特征，**DeepFace** 作表情，再翻译为 `user_fatigue_updated` / `user_emotion_updated`。
 - 麦克风适配器可以将语音识别结果翻译为 `speech_recognized`。
 
 ## 6. 主运行流程

@@ -61,11 +61,15 @@ def make_fatigue_event(
     source: str,
     confidence: float | None = None,
     perclos: float | None = None,
+    yawn_ratio: float | None = None,
     yawn_in_window: bool | None = None,
     window_sec: int | None = None,
     timestamp: int | None = None,
 ) -> Event:
-    """构造疲劳状态更新事件。"""
+    """构造疲劳状态更新事件。
+
+    `perclos`：由 EAR 与滑动窗得到的**眼部**近似 PERCLOS。`yawn_ratio`：由 MAR
+    在同期窗口内打哈欠/张口相关帧的占比。档位滞回在适配器内对二者加权后计算。"""
     return _build_event(
         "user_fatigue_updated",
         timestamp=timestamp,
@@ -73,6 +77,7 @@ def make_fatigue_event(
         source=source,
         confidence=_normalize_confidence(confidence),
         perclos=perclos,
+        yawn_ratio=yawn_ratio,
         yawn_in_window=yawn_in_window,
         window_sec=window_sec,
     )
@@ -121,6 +126,25 @@ def user_emotion_updated_from_rafdb(
         raf_emotion=raf_emotion,
         raf_label_id=label_id,
         person_id=person_id,
+    )
+
+
+def user_emotion_updated_standard(
+    *,
+    timestamp: int,
+    emotion: str,
+    source: str = "camera",
+    confidence: float | None = None,
+    model: str | None = None,
+) -> Event:
+    """视觉后端已映射到闭集 `emotion` 时使用（如 DeepFace、其他 API）；写入 `user_emotion_updated`。"""
+    return _build_event(
+        "user_emotion_updated",
+        timestamp=timestamp,
+        emotion=emotion,
+        confidence=_normalize_confidence(confidence),
+        source=source,
+        model=model,
     )
 
 

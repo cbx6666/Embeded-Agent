@@ -16,6 +16,7 @@ from src.agent.event.factories import (
     make_speech_recognized_event,
     make_temperature_humidity_event,
     user_emotion_updated_from_rafdb,
+    user_emotion_updated_standard,
 )
 from src.agent.event.types import EventType
 
@@ -31,4 +32,5 @@ __all__ = [
     "make_speech_recognized_event",
     "make_temperature_humidity_event",
     "user_emotion_updated_from_rafdb",
+    "user_emotion_updated_standard",
 ]

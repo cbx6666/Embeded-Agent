@@ -17,18 +17,19 @@
 - `pet_display.py`：桌宠显示适配器；消费 `display` / `render_pet_expression` / `set_light_state`，并上报 `display_sensor_updated`
 - `voice_adapter.py`：语音输入输出适配器；上报 `speech_recognized`，消费 `speak`
 - `behavior_adapter.py`：行为识别适配器；发出行为线索与行为汇总事件
-- `vision_affect/`：**唯一**承载摄像头检测逻辑（MediaPipe、EAR/PERCLOS、可选 ResNet18）；向上只发 **`user_fatigue_updated` / `user_emotion_updated`**。可调参数见包内 **`VisionAffectConfig`**。**不使用 YOLO**；内核不实现、也不应依赖本包内部算法。
+- `vision_affect/`：摄像头 + **MediaPipe Face Mesh**；**疲劳** 由 **EAR**（眼部 PERCLOS）与 **MAR**（打哈欠/张口，滑动窗内占比）加权融合后滞回分档；**情绪** 默认 **DeepFace**（`backends/deepface_emotion.py`），可选 RAF-ResNet。模型放在 **`backends/`**，**向上只发** `user_fatigue_updated` / `user_emotion_updated`。**不使用 YOLO**；内核不 import 本包内部实现。
 
-## 视觉可选依赖
+## 视觉依赖
 
-见仓库根目录 **`requirements-vision.txt`**。安装后可用：
+见根目录 **`requirements.txt`**（含 `mediapipe`、`deepface` 等）。启动示例：
 
 ```bash
 python -m src.main --vision
-python -m src.main --vision --raf-ckpt path/to/raf_resnet18.pth
+python -m src.main --vision --emotion-backend raf --raf-ckpt path/to/raf_resnet18.pth
 ```
 
-环境变量 **`RAF_RESNET18_CKPT`** 可代替 `--raf-ckpt`。
+- 环境变量 **`EMBED_EMOTION_BACKEND`** 可设 `deepface` / `raf` / `none`（覆盖 `--emotion-backend`）。
+- 环境变量 **`RAF_RESNET18_CKPT`** 在 RAF 模式下可代替 `--raf-ckpt`。
 
 ## 后续扩展方向
 

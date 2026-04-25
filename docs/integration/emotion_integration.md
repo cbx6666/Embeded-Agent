@@ -33,3 +33,12 @@
 |---------|------|
 | `VisionAffectInputAdapter` | 从摄像头或视觉模型输出中识别情绪和疲劳，并发出标准事件。 |
 | `mock_input.py` | 提供情绪和疲劳的 mock 输入。 |
+
+## 底层代码位置
+
+| 目录 / 文件 | 说明 |
+|-------------|------|
+| `src/adapters/vision_affect/` | 对内核唯一入口：`VisionAffectInputAdapter` 只调用 `Event` 工厂并 `handle_event`；**内核不得 import 本子树内部模块**。 |
+| `vision_affect/pipeline.py` | **EAR**（眼闭合 → 眼部 PERCLOS 窗）、**MAR**（口部纵横比，高于阈值记为打哈欠/张口帧 → 与眼窗同长滑动窗得占比）、`combined_fatigue_score` 加权融合、滞回分档、人脸 bbox。 |
+| `vision_affect/backends/` | 情绪推理：`deepface_emotion.py`（默认 **DeepFace**）、`raf_resnet.py`（可选 RAF）、`factory.py` 依 `emotion_backend` 装配。 |
+| `src/agent/event/factories.py` | 将各后端输出**翻译**为统一 `user_emotion_updated` 载荷；`user_fatigue_updated` 含 `perclos`（眼）、`yawn_ratio`（口部窗口占比）、`yawn_in_window`。 |
