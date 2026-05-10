@@ -100,6 +100,7 @@ def _summarize_state(state: Any) -> dict[str, object]:
     return {
         "mode": state.interaction.mode,
         "dialogue_state": state.interaction.dialogue_state,
+        "current_user_id": state.current_user_id,
         "user_presence": state.user.presence,
         "user_attention": state.user.attention,
         "user_fatigue": state.user.fatigue_level,

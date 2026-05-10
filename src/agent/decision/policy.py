@@ -9,6 +9,7 @@ from src.agent.decision.realizer import realize_actions
 from src.agent.event import Event
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
+from src.services.user_profile_service import UserProfileService
 
 
 def decide_actions_with_intents(
@@ -16,24 +17,16 @@ def decide_actions_with_intents(
     current_state: AgentState,
     event: Event,
     llm_service: LLMService,
+    profile_service: UserProfileService | None = None,
 ) -> tuple[list[AgentIntent], list[Action]]:
     """先规划意图，再将意图落成动作。"""
     intents = plan_intents(previous_state, current_state, event, llm_service=llm_service)
-    actions = realize_actions(intents, current_state, event, llm_service)
+    actions = realize_actions(
+        intents,
+        current_state,
+        event,
+        llm_service,
+        profile_service=profile_service,
+    )
     return intents, actions
 
-
-def decide_actions(
-    previous_state: AgentState,
-    current_state: AgentState,
-    event: Event,
-    llm_service: LLMService,
-) -> list[Action]:
-    """兼容只需要动作列表的旧入口。"""
-    _, actions = decide_actions_with_intents(
-        previous_state=previous_state,
-        current_state=current_state,
-        event=event,
-        llm_service=llm_service,
-    )
-    return actions

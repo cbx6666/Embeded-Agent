@@ -16,9 +16,16 @@ from src.agent.action import (
     stop_voice_capture,
 )
 from src.agent.decision.intent import AgentIntent
+from src.agent.decision.personalization import (
+    build_distraction_reminder_text,
+    build_llm_prompt,
+    build_rest_reminder_text,
+    tts_payload_for_user,
+)
 from src.agent.event import Event
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
+from src.services.user_profile_service import UserProfileService
 
 
 def realize_actions(
@@ -26,11 +33,12 @@ def realize_actions(
     current_state: AgentState,
     event: Event,
     llm_service: LLMService,
+    profile_service: UserProfileService | None = None,
 ) -> list[Action]:
     """把 intent 序列转换为具体 action。"""
     actions: list[Action] = []
     for intent in sorted(intents, key=lambda item: item.priority, reverse=True):
-        actions.extend(_realize_intent(intent, current_state, event, llm_service))
+        actions.extend(_realize_intent(intent, current_state, event, llm_service, profile_service))
     return actions
 
 
@@ -39,20 +47,21 @@ def _realize_intent(
     current_state: AgentState,
     event: Event,
     llm_service: LLMService,
+    profile_service: UserProfileService | None,
 ) -> list[Action]:
     """根据意图类型分发到对应的动作生成函数。"""
     if intent.type == "answer_user":
-        return _realize_answer_user(intent, current_state, event, llm_service)
+        return _realize_answer_user(intent, current_state, event, llm_service, profile_service)
     if intent.type == "start_focus":
-        return _realize_start_focus(current_state, event)
+        return _realize_start_focus(current_state, event, profile_service)
     if intent.type == "stop_focus":
-        return _realize_stop_focus(current_state, event)
+        return _realize_stop_focus(current_state, event, profile_service)
     if intent.type == "complete_focus":
-        return _realize_complete_focus(current_state, event)
+        return _realize_complete_focus(current_state, event, profile_service)
     if intent.type == "suggest_rest":
-        return _realize_suggest_rest(intent.reason, current_state, event)
+        return _realize_suggest_rest(intent.reason, current_state, event, profile_service)
     if intent.type == "remind_distraction":
-        return _realize_distraction_reminder(current_state, event)
+        return _realize_distraction_reminder(current_state, event, profile_service)
     if intent.type == "adjust_environment_feedback":
         return _realize_environment_feedback(event.type, intent.payload.get("level"))
     if intent.type == "voice_interaction":
@@ -69,6 +78,7 @@ def _realize_answer_user(
     current_state: AgentState,
     event: Event,
     llm_service: LLMService,
+    profile_service: UserProfileService | None,
 ) -> list[Action]:
     """生成面向用户的回复动作，必要时调用 LLM 生成文本。"""
     text = str(intent.payload.get("text", "")).strip()
@@ -91,6 +101,7 @@ def _realize_answer_user(
             kind="result",
             level="info",
             reason=intent.reason or "status_feedback",
+            profile_service=profile_service,
         )
 
     if intent.payload.get("response_mode") == "status_summary":
@@ -102,6 +113,7 @@ def _realize_answer_user(
             kind="result",
             level="info",
             reason="status_query",
+            profile_service=profile_service,
         )
 
     if not text:
@@ -112,10 +124,11 @@ def _realize_answer_user(
             kind="result",
             level="info",
             reason="empty_input",
+            profile_service=profile_service,
         )
 
     if intent.requires_llm:
-        llm_input = _build_llm_prompt(text, current_state)
+        llm_input = build_llm_prompt(text, current_state, profile_service)
         reply = llm_service.generate_reply(llm_input, current_state)
     else:
         reply = "收到。我会继续保持简洁反馈。"
@@ -127,10 +140,15 @@ def _realize_answer_user(
         kind="dialog",
         level="info",
         reason="assistant_reply",
+        profile_service=profile_service,
     )
 
 
-def _realize_start_focus(current_state: AgentState, event: Event) -> list[Action]:
+def _realize_start_focus(
+    current_state: AgentState,
+    event: Event,
+    profile_service: UserProfileService | None,
+) -> list[Action]:
     """生成开始专注时需要执行的一组动作。"""
     duration_sec = current_state.focus.target_duration_sec or 0
     minutes = duration_sec // 60 if duration_sec else 0
@@ -144,13 +162,18 @@ def _realize_start_focus(current_state: AgentState, event: Event) -> list[Action
             level="info",
             reason="focus_start",
             status="focus",
+            profile_service=profile_service,
         )
     )
     actions.append(set_light_state("thinking", kind="status", level="info", reason="focus_start"))
     return actions
 
 
-def _realize_stop_focus(current_state: AgentState, event: Event) -> list[Action]:
+def _realize_stop_focus(
+    current_state: AgentState,
+    event: Event,
+    profile_service: UserProfileService | None,
+) -> list[Action]:
     """生成结束专注时需要执行的一组动作。"""
     if not current_state.memory.focus_sessions:
         return _build_response_actions(
@@ -160,6 +183,7 @@ def _realize_stop_focus(current_state: AgentState, event: Event) -> list[Action]
             kind="result",
             level="info",
             reason="focus_not_active",
+            profile_service=profile_service,
         )
 
     actual_duration = int(current_state.memory.focus_sessions[-1]["actual_duration_sec"])
@@ -173,13 +197,18 @@ def _realize_stop_focus(current_state: AgentState, event: Event) -> list[Action]
             level="info",
             reason="focus_stop",
             status="idle",
+            profile_service=profile_service,
         )
     )
     actions.append(set_light_state("idle", kind="status", level="info", reason="focus_stop"))
     return actions
 
 
-def _realize_complete_focus(current_state: AgentState, event: Event) -> list[Action]:
+def _realize_complete_focus(
+    current_state: AgentState,
+    event: Event,
+    profile_service: UserProfileService | None,
+) -> list[Action]:
     """生成专注自动完成后的提醒动作。"""
     actions = [stop_timer()]
     actions.extend(
@@ -192,15 +221,21 @@ def _realize_complete_focus(current_state: AgentState, event: Event) -> list[Act
             reason="focus_complete",
             status="idle",
             proactive=True,
+            profile_service=profile_service,
         )
     )
     actions.append(set_light_state("alert", kind="notification", level="remind", reason="focus_complete"))
     return actions
 
 
-def _realize_suggest_rest(reason: str, current_state: AgentState, event: Event) -> list[Action]:
+def _realize_suggest_rest(
+    reason: str,
+    current_state: AgentState,
+    event: Event,
+    profile_service: UserProfileService | None,
+) -> list[Action]:
     """生成休息建议对应的动作集合。"""
-    reminder_text = "你已经专注了一段时间，而且看起来有点疲劳，建议休息一下。"
+    reminder_text = build_rest_reminder_text(current_state, profile_service)
     actions = _build_response_actions(
         reminder_text,
         current_state,
@@ -210,14 +245,19 @@ def _realize_suggest_rest(reason: str, current_state: AgentState, event: Event) 
         reason=reason or "rest_reminder",
         status="alert",
         proactive=True,
+        profile_service=profile_service,
     )
     actions.append(set_light_state("alert", kind="notification", level="remind", reason=reason or "rest_reminder"))
     return actions
 
 
-def _realize_distraction_reminder(current_state: AgentState, event: Event) -> list[Action]:
+def _realize_distraction_reminder(
+    current_state: AgentState,
+    event: Event,
+    profile_service: UserProfileService | None,
+) -> list[Action]:
     """生成分心提醒对应的动作集合。"""
-    text = "检测到你有些分心，建议回到当前专注任务。"
+    text = build_distraction_reminder_text(current_state, profile_service)
     actions = _build_response_actions(
         text,
         current_state,
@@ -227,6 +267,7 @@ def _realize_distraction_reminder(current_state: AgentState, event: Event) -> li
         reason="distraction_reminder",
         status="focus",
         proactive=True,
+        profile_service=profile_service,
     )
     actions.append(set_light_state("thinking", kind="notification", level="remind", reason="distraction_reminder"))
     return actions
@@ -299,13 +340,22 @@ def _build_response_actions(
     reason: str,
     status: str | None = None,
     proactive: bool = False,
+    profile_service: UserProfileService | None = None,
 ) -> list[Action]:
     """统一生成 speak 和 display 组合动作。"""
     actions: list[Action] = []
     should_speak = _can_emit_speak(current_state, event, proactive=proactive)
 
     if should_speak:
-        actions.append(speak(text, kind=kind, level=level, reason=reason))
+        actions.append(
+            speak(
+                text,
+                kind=kind,
+                level=level,
+                reason=reason,
+                **tts_payload_for_user(current_state, profile_service),
+            )
+        )
 
     if not should_speak or kind in {"notification", "dialog", "result"}:
         actions.append(display(text, status=status, kind=kind, level=level, reason=reason))
@@ -358,15 +408,3 @@ def _latest_emotion_summary_text(state: AgentState) -> str:
     return f"最近情绪摘要：主导情绪 {dominant}，平均置信度 {float(avg_confidence):.2f}。"
 
 
-def _build_llm_prompt(text: str, state: AgentState) -> str:
-    """构造自然语言回复阶段使用的上下文提示词。"""
-    recent_messages = state.memory.recent_messages[-5:]
-    latest_emotion = state.memory.emotion_summaries[-1] if state.memory.emotion_summaries else {}
-    return (
-        f"用户输入：{text}\n"
-        f"专注状态：active={state.focus.active}, remaining={state.focus.remaining_sec}\n"
-        f"用户状态：presence={state.user.presence}, attention={state.user.attention}, "
-        f"emotion={state.user.emotion}, fatigue={state.user.fatigue_level}\n"
-        f"最近消息：{recent_messages}\n"
-        f"最近情绪摘要：{latest_emotion}"
-    )

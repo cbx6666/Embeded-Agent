@@ -52,7 +52,7 @@ class BehaviorAdapter:
             timestamp=timestamp,
         )
         try:
-            self.core.handle_event(event)
+            self.core.handle_event_with_results(event)
         except Exception:
             return False
 
@@ -85,7 +85,7 @@ class BehaviorAdapter:
             timestamp=timestamp,
         )
         try:
-            self.core.handle_event(event)
+            self.core.handle_event_with_results(event)
         except Exception:
             return False
 
