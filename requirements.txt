@@ -1,0 +1,12 @@
+opencv-python-headless>=4.8.0
+mediapipe>=0.10.9
+numpy>=1.24.0
+
+# 表情识别（默认 DeepFace；会拉取 TensorFlow 等，安装较慢）
+deepface>=0.0.90
+# TensorFlow 2.16+ 时 retinaface/DeepFace 需要（否则 import deepface 可能报缺 tf-keras）
+tf-keras>=2.16.0
+
+# 仅当使用 --emotion-backend raf 且提供 RAF-ResNet 权重时额外需要：
+# torch>=2.0.0
+# torchvision>=0.15.0

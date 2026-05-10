@@ -1,6 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-"""Agent 核心调度模块。"""
+"""Agent 单事件核心调度器。"""
 
 import json
 import threading
@@ -9,9 +9,11 @@ from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
 from src.agent.action import Action
+from src.agent.decision.intent import AgentIntent
+from src.agent.decision.policy import decide_actions_with_intents
 from src.agent.event import Event
-from src.agent.policy import decide_actions
 from src.agent.reducer import reduce_state
+from src.agent.runtime.action_result import ActionResult
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 from src.services.memory_service import MemoryService
@@ -20,7 +22,7 @@ from src.storage.json_store import JsonStore
 
 
 class AgentCore:
-    """系统核心调度器。"""
+    """负责处理单个事件的核心调度器。"""
 
     def __init__(
         self,
@@ -30,21 +32,35 @@ class AgentCore:
         llm_service: LLMService,
         store: JsonStore,
     ) -> None:
+        """初始化输出、服务依赖和持久化状态。"""
         self.output = output
         self.timer_service = timer_service
         self.memory_service = memory_service
         self.llm_service = llm_service
         self.store = store
         self.state = AgentState.from_dict(self.store.load_state_dict())
+        self.last_intents: list[AgentIntent] = []
+        self.last_action_results: list[ActionResult] = []
         self._lock = threading.RLock()
 
     def handle_event(self, event: Event) -> list[Action]:
-        """处理单个标准事件。"""
+        """处理单个事件，并仅返回动作列表。"""
+        actions, _ = self.handle_event_with_results(event)
+        return actions
+
+    def handle_event_with_results(
+        self,
+        event: Event,
+    ) -> tuple[list[Action], list[ActionResult]]:
+        """处理单个事件，并返回动作及其执行结果。"""
         with self._lock:
+            # 先保留旧状态，供 planner 比较“事件前后”差异使用。
             previous_state = AgentState.from_dict(self.state.to_dict())
             self.state = reduce_state(self.state, event)
             self.memory_service.record_event(self.state, event)
-            if event.type == "user_text_input":
+
+            # 用户输入会写入短期消息记忆，供后续规则和 LLM 使用。
+            if event.type in {"user_text_input", "speech_recognized"}:
                 text = str(event.payload.get("text", "")).strip()
                 if text:
                     self.memory_service.record_message(
@@ -53,59 +69,140 @@ class AgentCore:
                         text=text,
                         timestamp=event.timestamp,
                     )
-            actions = decide_actions(previous_state, self.state, event, self.llm_service)
-            self._execute_actions(actions, event.timestamp)
+
+            # 先得到意图，再把意图落成动作；AgentCore 不直接拼装动作细节。
+            intents, actions = decide_actions_with_intents(
+                previous_state=previous_state,
+                current_state=self.state,
+                event=event,
+                llm_service=self.llm_service,
+            )
+            results = self._execute_actions(actions, event.timestamp)
+
+            self.last_intents = intents
+            self.last_action_results = results
             self.memory_service.trim(self.state)
             self.store.save_state(self.state)
-            return actions
+            return actions, results
 
     def render_state(self) -> str:
+        """将当前状态渲染为格式化 JSON 文本。"""
         with self._lock:
             return json.dumps(self.state.to_dict(), ensure_ascii=False, indent=2)
 
     def render_history(self) -> str:
+        """将当前短期记忆渲染为格式化 JSON 文本。"""
         with self._lock:
             history = {
                 "recent_events": self.state.memory.recent_events,
                 "recent_messages": self.state.memory.recent_messages,
+                "reminder_records": self.state.memory.reminder_records,
+                "attention_records": self.state.memory.attention_records,
+                "environment_records": self.state.memory.environment_records,
                 "focus_sessions": self.state.memory.focus_sessions,
+                "focus_session_count": self.state.memory.focus_session_count,
+                "focus_total_duration_sec": self.state.memory.focus_total_duration_sec,
+                "distraction_event_count": self.state.memory.distraction_event_count,
+                "state_change_counts": self.state.memory.state_change_counts,
+                "emotion_samples": self.state.memory.emotion_samples,
+                "emotion_summaries": self.state.memory.emotion_summaries,
             }
             return json.dumps(history, ensure_ascii=False, indent=2)
 
     def shutdown(self) -> None:
+        """停止内部服务并持久化当前状态。"""
         with self._lock:
             self.timer_service.stop()
             self.store.save_state(self.state)
 
-    def _execute_actions(self, actions: list[Action], action_ts: int) -> None:
-        for action in actions:
+    def _execute_actions(self, actions: list[Action], action_ts: int) -> list[ActionResult]:
+        """顺序执行动作列表，并为每个动作生成执行结果。"""
+        return [self._execute_action(action, action_ts) for action in actions]
+
+    def _execute_action(self, action: Action, action_ts: int) -> ActionResult:
+        """执行单个动作，并将执行结果封装为 ActionResult。"""
+        try:
             if action.type == "start_timer":
                 duration_sec = int(action.payload.get("duration_sec", 0))
                 self.timer_service.start(duration_sec, self._on_timer_tick)
-                continue
+                return ActionResult(
+                    action_type=action.type,
+                    success=True,
+                    timestamp=action_ts,
+                    payload=dict(action.payload),
+                )
 
             if action.type == "stop_timer":
                 self.timer_service.stop()
-                continue
-
-            if action.type in {"speak", "display"}:
-                self.output.execute(action)
-                self.memory_service.record_message(
-                    self.state,
-                    role="agent" if action.type == "speak" else "display",
-                    text=str(action.payload.get("text", "")),
+                return ActionResult(
+                    action_type=action.type,
+                    success=True,
                     timestamp=action_ts,
+                    payload=dict(action.payload),
                 )
+
+            if action.type == "none":
+                return ActionResult(
+                    action_type=action.type,
+                    success=True,
+                    timestamp=action_ts,
+                    payload=dict(action.payload),
+                )
+
+            self.output.execute(action)
+            self.memory_service.record_action(self.state, action.type, action.payload, action_ts)
+
+            # 这类动作既会影响交互状态，也可能需要写回消息记忆和冷却记录。
+            if action.type in {
+                "speak",
+                "display",
+                "render_pet_expression",
+                "set_light_state",
+                "start_voice_capture",
+                "stop_voice_capture",
+                "set_tts_voice",
+                "set_tts_volume",
+                "set_tts_speed",
+            }:
+                text = str(action.payload.get("text", "")).strip()
+                if text and action.type in {"speak", "display"}:
+                    role = "agent" if action.type == "speak" else "display"
+                    self.memory_service.record_message(
+                        self.state,
+                        role=role,
+                        text=text,
+                        timestamp=action_ts,
+                    )
                 self.state.interaction.last_agent_response_time = action_ts
-                self.state.interaction.dialogue_state = "idle"
+                if action.type in {"speak", "display"}:
+                    self.state.interaction.dialogue_state = "idle"
                 self._mark_cooldown_if_needed(action, action_ts)
 
+            return ActionResult(
+                action_type=action.type,
+                success=True,
+                timestamp=action_ts,
+                payload=dict(action.payload),
+            )
+        except Exception as exc:  # pragma: no cover
+            return ActionResult(
+                action_type=action.type,
+                success=False,
+                timestamp=action_ts,
+                reason=str(exc),
+                payload=dict(action.payload),
+            )
+
     def _mark_cooldown_if_needed(self, action: Action, action_ts: int) -> None:
-        kind = action.payload.get("kind")
-        if kind in {"rest_reminder", "focus_complete"}:
-            self.state.cooldown.reminder_last_ts[str(kind)] = action_ts
+        """在提醒类动作执行后记录对应的冷却时间。"""
+        if action.payload.get("kind") != "notification":
+            return
+        reason = action.payload.get("reason")
+        if reason:
+            self.state.cooldown.reminder_last_ts[str(reason)] = action_ts
 
     def _on_timer_tick(self, remaining_sec: int) -> None:
+        """将定时器回调重新包装成标准事件并走统一链路。"""
         event_type = "timer_finished" if remaining_sec <= 0 else "timer_ticked"
         event = Event(
             type=event_type,
@@ -115,12 +212,12 @@ class AgentCore:
         self.handle_event(event)
 
 
-
 def build_default_core(
     store_path: str | Path = "data/runtime_store.json",
     timer_background: bool = True,
     output: ConsoleOutput | None = None,
 ) -> AgentCore:
+    """使用默认服务依赖构造一个 AgentCore 实例。"""
     return AgentCore(
         output=output or ConsoleOutput(),
         timer_service=TimerService(background=timer_background),

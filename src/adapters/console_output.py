@@ -19,6 +19,14 @@ class ConsoleOutput:
     def execute(self, action: Action) -> None:
         text = str(action.payload.get("text", "")).strip()
         if not text:
+            if action.type == "render_pet_expression":
+                expression = str(action.payload.get("expression", "")).strip()
+                if expression:
+                    self.show_text(f"[Pet] expression={expression}")
+            elif action.type == "set_light_state":
+                state = str(action.payload.get("state", "")).strip()
+                if state:
+                    self.show_text(f"[Light] state={state}")
             return
         if action.type == "speak":
             self.show_text(f"[Agent] {text}")

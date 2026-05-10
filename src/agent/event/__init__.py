@@ -6,6 +6,31 @@
 """
 
 from src.agent.event.event_model import Event
+from src.agent.event.factories import (
+    make_behavior_attention_event,
+    make_behavior_presence_event,
+    make_display_sensor_event,
+    make_fatigue_event,
+    make_light_level_event,
+    make_noise_level_event,
+    make_speech_recognized_event,
+    make_temperature_humidity_event,
+    user_emotion_updated_from_rafdb,
+    user_emotion_updated_standard,
+)
 from src.agent.event.types import EventType
 
-__all__ = ["Event", "EventType"]
+__all__ = [
+    "Event",
+    "EventType",
+    "make_behavior_attention_event",
+    "make_behavior_presence_event",
+    "make_display_sensor_event",
+    "make_fatigue_event",
+    "make_light_level_event",
+    "make_noise_level_event",
+    "make_speech_recognized_event",
+    "make_temperature_humidity_event",
+    "user_emotion_updated_from_rafdb",
+    "user_emotion_updated_standard",
+]
