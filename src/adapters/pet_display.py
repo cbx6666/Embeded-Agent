@@ -11,7 +11,7 @@ from src.agent.event import make_display_sensor_event
 
 
 class EventEmitSink(Protocol):
-    def handle_event(self, event) -> Any:
+    def handle_event_with_results(self, event) -> Any:
         ...
 
 
@@ -71,7 +71,7 @@ class PetDisplayAdapter:
             sensor_values=sensor_values,
             screen_id=screen_id,
         )
-        self._sink.handle_event(event)
+        self._sink.handle_event_with_results(event)
 
     def poll_and_emit_sensor_snapshot(
         self,

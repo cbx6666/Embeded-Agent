@@ -32,6 +32,7 @@ class AgentState:
     environment: EnvironmentState = field(default_factory=EnvironmentState)
     cooldown: CooldownState = field(default_factory=CooldownState)
     memory: MemoryState = field(default_factory=MemoryState)
+    current_user_id: str = "default"
 
     def to_dict(self) -> dict:
         """将嵌套 dataclass 转成可持久化字典。"""
@@ -55,4 +56,5 @@ class AgentState:
             environment=EnvironmentState(**_only_fields(data.get("environment", {}), EnvironmentState)),
             cooldown=CooldownState(**_only_fields(data.get("cooldown", {}), CooldownState)),
             memory=MemoryState(**_only_fields(data.get("memory", {}), MemoryState)),
+            current_user_id=str(data.get("current_user_id") or "default"),
         )

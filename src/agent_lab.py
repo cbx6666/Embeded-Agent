@@ -10,6 +10,7 @@ from pathlib import Path
 from src.adapters.cli_input import CLIInputAdapter, parse_cli_event
 from src.adapters.console_output import ConsoleOutput
 from src.adapters.mock_input import parse_mock_command
+from src.adapters.profile_cli import handle_profile_command
 from src.agent.core import AgentCore, build_default_core
 from src.agent.event import Event
 from src.agent.runtime.autonomy import build_autonomous_check_event
@@ -58,6 +59,17 @@ LAB_HELP_TEXT = """可用命令：
   调试命令：
     /state
     /history
+    /profile
+    /users
+    /switch_user xiaoli
+    /switch_user xiaoli 小李
+    /set_info age 12
+    /set_info gender 女
+    /set_info identity 小学生
+    /set_info hobbies 画画,足球
+    /set_pref favorite_content_types 音乐,相声,脱口秀
+    /set_pref reminder_style 温和
+    /set_pref favorite_music_styles 轻音乐,古风
     /trace
     /trace 5
     /last
@@ -156,7 +168,12 @@ def build_scenario_events(name: str, start_ts: int | None = None) -> list[tuple[
 
 def create_runtime(store_path: str | Path, max_steps: int, output: ConsoleOutput) -> tuple[AgentCore, AgentLoop]:
     """创建一套用于终端验证的 AgentCore 与 AgentLoop。"""
-    core = build_default_core(store_path=store_path, output=output)
+    profile_store_path = Path(store_path).with_name("user_profiles_lab.json")
+    core = build_default_core(
+        store_path=store_path,
+        profile_store_path=profile_store_path,
+        output=output,
+    )
     loop = AgentLoop(core, max_steps=max_steps)
     return core, loop
 
@@ -193,6 +210,8 @@ def main() -> None:
                 continue
             if command == "/history":
                 output.show_text(core.render_history())
+                continue
+            if handle_profile_command(core, output, command):
                 continue
             if command == "/scenarios":
                 _show_scenarios(output)
