@@ -1,11 +1,15 @@
-﻿from dataclasses import dataclass
+from dataclasses import dataclass
 
 
 @dataclass
 class EnvironmentState:
-    """环境状态：为光照、噪声、温湿度等输入预留接口。"""
+    """环境状态：保存光照、噪声、温湿度的标准化字段。"""
 
-    light: int | None = None
-    noise: int | None = None
-    temperature: float | None = None
-    humidity: float | None = None
+    light_lux: int | None = None
+    light_level: str | None = None
+    noise_db: int | None = None
+    noise_level: str | None = None
+    temperature_c: float | None = None
+    temperature_level: str | None = None
+    humidity_pct: float | None = None
+    humidity_level: str | None = None

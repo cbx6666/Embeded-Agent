@@ -1,5 +1,5 @@
 {
-  "updated_at": 1775636041,
+  "updated_at": 1776865268,
   "state": {
     "user": {
       "presence": "present",
@@ -38,38 +38,6 @@
     },
     "memory": {
       "recent_events": [
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632144,
-          "payload": {
-            "remaining_sec": 62,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632145,
-          "payload": {
-            "remaining_sec": 61,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632146,
-          "payload": {
-            "remaining_sec": 60,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632147,
-          "payload": {
-            "remaining_sec": 59,
-            "timer": "focus"
-          }
-        },
         {
           "type": "timer_ticked",
           "timestamp": 1775632148,
@@ -196,6 +164,46 @@
           "payload": {
             "remaining_sec": 0,
             "timer": "focus"
+          }
+        },
+        {
+          "type": "user_posture_updated",
+          "timestamp": 1776865268,
+          "payload": {
+            "posture": "slouch",
+            "source": "camera_v1",
+            "confidence": 0.9,
+            "frame_id": 1
+          }
+        },
+        {
+          "type": "user_posture_updated",
+          "timestamp": 1776865268,
+          "payload": {
+            "posture": "upright",
+            "source": "camera_v1",
+            "confidence": 0.95,
+            "frame_id": 3
+          }
+        },
+        {
+          "type": "user_posture_updated",
+          "timestamp": 1776865268,
+          "payload": {
+            "posture": "slouch",
+            "source": "camera_v1",
+            "confidence": 0.8,
+            "frame_id": 10
+          }
+        },
+        {
+          "type": "user_posture_summary",
+          "timestamp": 1776865268,
+          "payload": {
+            "posture": "slouch",
+            "accumulated_sec": 0.6,
+            "source": "camera_v1",
+            "confidence": 0.8
           }
         }
       ],
