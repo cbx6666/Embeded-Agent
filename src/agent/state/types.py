@@ -1,4 +1,4 @@
-﻿from typing import Literal
+from typing import Literal
 
 # Agent 的高层运行模式。
 Mode = Literal["normal", "focus", "silent"]
@@ -7,7 +7,9 @@ Mode = Literal["normal", "focus", "silent"]
 UserPresence = Literal["present", "away", "unknown"]
 UserAttention = Literal["focused", "distracted", "idle"]
 UserEmotion = Literal["neutral", "tired", "stressed", "happy"]
-CurrentActivity = Literal["studying", "working", "resting", "unknown"]
+UserFatigueLevel = Literal["none", "mild", "moderate", "high"]
+UserBehavior = Literal["working", "phone_use", "staring", "desk_rest", "away", "unknown"]
 
-# 当前对话阶段。
+# 输出与交互状态。
 DialogueState = Literal["idle", "listening", "thinking", "speaking"]
+LightState = Literal["idle", "wake", "thinking", "alert", "error"]

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """mock 输入适配器模块。"""
 
@@ -9,9 +9,18 @@ from src.agent.event import Event
 FIELD_MAP = {
     "presence": ("user_presence_updated", "presence", {"present", "away", "unknown"}),
     "attention": ("user_attention_updated", "attention", {"focused", "distracted", "idle"}),
+    "behavior": (
+        "user_attention_updated",
+        "behavior",
+        {"working", "phone_use", "staring", "desk_rest", "away", "unknown"},
+    ),
     "emotion": ("user_emotion_updated", "emotion", {"neutral", "tired", "stressed", "happy"}),
+    "fatigue": (
+        "user_fatigue_updated",
+        "fatigue_level",
+        {"none", "mild", "moderate", "high"},
+    ),
 }
-
 
 
 def parse_mock_command(command: str) -> Event | None:
@@ -32,8 +41,10 @@ def parse_mock_command(command: str) -> Event | None:
     if value not in valid_values:
         raise ValueError(f"字段 {field_key} 不支持值: {value}")
 
-    return Event(
-        type=event_type,
-        timestamp=int(time.time()),
-        payload={payload_key: value, "source": "mock"},
-    )
+    payload: dict[str, object] = {payload_key: value, "source": "mock"}
+    if field_key == "behavior":
+        payload.setdefault("attention", "idle")
+    if field_key == "attention":
+        payload.setdefault("behavior", "unknown")
+
+    return Event(type=event_type, timestamp=int(time.time()), payload=payload)
