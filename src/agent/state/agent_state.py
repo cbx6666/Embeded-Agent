@@ -9,7 +9,7 @@
 - memory.focus_sessions = [{"actual_duration_sec": 1500, "reason": "timer_complete"}]
 """
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 
 from src.agent.state.cooldown_state import CooldownState
 from src.agent.state.environment_state import EnvironmentState
@@ -43,11 +43,16 @@ class AgentState:
         if not data:
             return cls()
 
+        def _only_fields(d: dict, dc: type) -> dict:
+            """仅保留目标 dataclass 定义过的字段。"""
+            names = {f.name for f in fields(dc)}
+            return {k: v for k, v in d.items() if k in names}
+
         return cls(
-            user=UserState(**data.get("user", {})),
-            interaction=InteractionState(**data.get("interaction", {})),
-            focus=FocusState(**data.get("focus", {})),
-            environment=EnvironmentState(**data.get("environment", {})),
-            cooldown=CooldownState(**data.get("cooldown", {})),
-            memory=MemoryState(**data.get("memory", {})),
+            user=UserState(**_only_fields(data.get("user", {}), UserState)),
+            interaction=InteractionState(**_only_fields(data.get("interaction", {}), InteractionState)),
+            focus=FocusState(**_only_fields(data.get("focus", {}), FocusState)),
+            environment=EnvironmentState(**_only_fields(data.get("environment", {}), EnvironmentState)),
+            cooldown=CooldownState(**_only_fields(data.get("cooldown", {}), CooldownState)),
+            memory=MemoryState(**_only_fields(data.get("memory", {}), MemoryState)),
         )
