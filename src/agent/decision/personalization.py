@@ -9,6 +9,7 @@ Intent -> Action 落地层尽量干净。
 """
 
 from src.agent.state import AgentState
+from src.agent.memory.policy.personalization_policy import PersonalizedPolicy
 from src.services.user_profile_service import UserProfileService
 
 DEFAULT_REST_REMINDER = "你已经专注了一段时间，而且看起来有点疲劳，建议休息一下。"
@@ -19,70 +20,66 @@ NO_INFO_CONTEXT = "暂无明确资料"
 
 def build_rest_reminder_text(
     state: AgentState,
-    profile_service: UserProfileService | None,
+    personalized_policy: PersonalizedPolicy | None,
+    profile_service: UserProfileService | None = None,
 ) -> str:
     """根据当前用户偏好生成休息提醒文案。
 
-    个性化只消费 service 暴露的只读查询：提醒风格、用户名前缀、休息内容偏好。
-    这样 Realizer 不需要知道 UserProfile 的字段结构，也不会承担 profile 管理职责。
+    优先消费 MemoryPipeline 生成的 PersonalizedPolicy；profile_service 仅作为旧调用路径
+    的兜底输入，避免 Realizer 直接理解 UserProfile 内部结构。
     """
-    if profile_service is None:
+    policy = personalized_policy or _build_policy_from_service(state, profile_service)
+    if policy is None:
         return DEFAULT_REST_REMINDER
 
-    user_id = state.current_user_id
-    prefix = profile_service.user_name_prefix(user_id)
-    if profile_service.uses_gentle_reminder(user_id):
-        text = f"{prefix}你有点累啦。要不要先休息一下？"
+    if policy.reminder_tone == "温和":
+        text = f"{policy.user_name_prefix}你有点累啦。要不要先休息一下？"
     else:
-        text = f"{prefix}{DEFAULT_REST_REMINDER}"
+        text = f"{policy.user_name_prefix}{DEFAULT_REST_REMINDER}"
 
-    activity = profile_service.preferred_break_activity(user_id)
-    if activity:
-        return f"{text}我可以陪你听一小段{activity}，放松一下再继续。"
+    if policy.break_activity:
+        return f"{text}我可以陪你听一小段{policy.break_activity}，放松一下再继续。"
     return text
 
 
 def build_distraction_reminder_text(
     state: AgentState,
-    profile_service: UserProfileService | None,
+    personalized_policy: PersonalizedPolicy | None,
+    profile_service: UserProfileService | None = None,
 ) -> str:
-    """根据提醒风格生成分心提醒文案。"""
-    if profile_service is None:
+    """根据个性化策略生成分心提醒文案。"""
+    policy = personalized_policy or _build_policy_from_service(state, profile_service)
+    if policy is None:
         return DEFAULT_DISTRACTION_REMINDER
 
-    user_id = state.current_user_id
-    prefix = profile_service.user_name_prefix(user_id)
-    if profile_service.uses_gentle_reminder(user_id):
-        return f"{prefix}稍微有点走神啦，我们慢慢把注意力拉回当前任务。"
-    return f"{prefix}{DEFAULT_DISTRACTION_REMINDER}"
+    if policy.reminder_tone == "温和":
+        return f"{policy.user_name_prefix}稍微有点走神啦，我们慢慢把注意力拉回当前任务。"
+    return f"{policy.user_name_prefix}{DEFAULT_DISTRACTION_REMINDER}"
 
 
 def build_llm_prompt(
     text: str,
     state: AgentState,
-    profile_service: UserProfileService | None,
+    personalized_policy: PersonalizedPolicy | None,
+    profile_service: UserProfileService | None = None,
 ) -> str:
     """构造自然语言回复阶段使用的上下文提示词。
 
-    LLM 只能读取偏好摘要来辅助回复，不能直接写 profile 或产出 Action。
+    LLM 只能读取资料/偏好/画像策略摘要来辅助回复，不能直接写 profile 或产出 Action。
     """
     recent_messages = state.memory.recent_messages[-5:]
     latest_emotion = state.memory.emotion_summaries[-1] if state.memory.emotion_summaries else {}
-    preference_context = (
-        profile_service.preference_context(state.current_user_id)
-        if profile_service is not None
-        else NO_PREFERENCE_CONTEXT
-    )
-    info_context = (
-        profile_service.info_context(state.current_user_id)
-        if profile_service is not None
-        else NO_INFO_CONTEXT
-    )
+    policy = personalized_policy or _build_policy_from_service(state, profile_service)
+    preference_context = policy.preference_context if policy is not None else NO_PREFERENCE_CONTEXT
+    info_context = policy.info_context if policy is not None else NO_INFO_CONTEXT
+    policy_explanations = policy.explanations if policy is not None else []
+
     return (
         f"用户输入：{text}\n"
         f"当前用户：{state.current_user_id}\n"
         f"用户资料：{info_context}\n"
         f"用户偏好：{preference_context}\n"
+        f"个性化策略依据：{policy_explanations}\n"
         f"专注状态：active={state.focus.active}, remaining={state.focus.remaining_sec}\n"
         f"用户状态：presence={state.user.presence}, attention={state.user.attention}, "
         f"emotion={state.user.emotion}, fatigue={state.user.fatigue_level}\n"
@@ -93,9 +90,31 @@ def build_llm_prompt(
 
 def tts_payload_for_user(
     state: AgentState,
-    profile_service: UserProfileService | None,
+    personalized_policy: PersonalizedPolicy | None,
+    profile_service: UserProfileService | None = None,
 ) -> dict[str, object]:
-    """读取当前用户的 TTS 偏好，并转成 speak action 的 payload。"""
-    if profile_service is None:
+    """读取当前用户的 TTS 个性化策略，并转成 speak action 的 payload。"""
+    policy = personalized_policy or _build_policy_from_service(state, profile_service)
+    if policy is None:
         return {}
-    return profile_service.tts_payload(state.current_user_id)
+    return dict(policy.tts_payload)
+
+
+def _build_policy_from_service(
+    state: AgentState,
+    profile_service: UserProfileService | None,
+) -> PersonalizedPolicy | None:
+    """兼容没有 MemoryPipeline 的测试/旧路径，集中从 service 构造策略快照。"""
+    if profile_service is None:
+        return None
+    user_id = state.current_user_id
+    reminder_tone = "温和" if profile_service.uses_gentle_reminder(user_id) else None
+    return PersonalizedPolicy(
+        user_id=profile_service.ensure_user_id(user_id),
+        reminder_tone=reminder_tone,
+        user_name_prefix=profile_service.user_name_prefix(user_id),
+        break_activity=profile_service.preferred_break_activity(user_id),
+        tts_payload=profile_service.tts_payload(user_id),
+        info_context=profile_service.info_context(user_id),
+        preference_context=profile_service.preference_context(user_id),
+    )

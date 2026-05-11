@@ -22,6 +22,8 @@ EventType = Literal[
     "user_switched",
     "user_profile_updated",
     "user_preference_update_requested",
+    "break_suggestion_accepted",
+    "break_suggestion_rejected",
     "tts_started",
     "tts_finished",
     "voice_volume_changed",
