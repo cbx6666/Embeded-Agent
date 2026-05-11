@@ -21,6 +21,12 @@ from src.agent.state.types import (
     UserPresence,
 )
 from src.agent.state.user_state import UserState
+from src.agent.state.user_profile_state import (
+    UserInfo,
+    UserPreference,
+    UserProfile,
+    UserProfileInsight,
+)
 
 __all__ = [
     "AgentState",
@@ -36,6 +42,10 @@ __all__ = [
     "UserBehavior",
     "UserEmotion",
     "UserFatigueLevel",
+    "UserInfo",
     "UserPresence",
+    "UserPreference",
+    "UserProfile",
+    "UserProfileInsight",
     "UserState",
 ]

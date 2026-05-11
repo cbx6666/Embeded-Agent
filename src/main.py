@@ -6,6 +6,7 @@ import os
 from src.adapters.cli_input import CLIInputAdapter, HELP_TEXT, parse_cli_event
 from src.adapters.console_output import ConsoleOutput
 from src.adapters.mock_input import parse_mock_command
+from src.adapters.profile_cli import handle_profile_command
 from src.agent.core import build_default_core
 
 
@@ -158,6 +159,8 @@ def main() -> None:
             if command == "/history":
                 output.show_text(core.render_history())
                 continue
+            if handle_profile_command(core, output, command):
+                continue
 
             try:
                 mock_event = parse_mock_command(command)
@@ -166,10 +169,10 @@ def main() -> None:
                 continue
 
             if mock_event is not None:
-                core.handle_event(mock_event)
+                core.handle_event_with_results(mock_event)
                 continue
 
-            core.handle_event(parse_cli_event(command))
+            core.handle_event_with_results(parse_cli_event(command))
     finally:
         if vision_adapter is not None:
             vision_adapter.stop()

@@ -9,7 +9,7 @@ from src.agent.decision.intent import AgentIntent
 from src.agent.decision.intent_guard import guard_intents
 from src.agent.decision.llm_intent_planner import plan_intents_with_llm
 from src.agent.decision.planner import build_candidate_intents, plan_intents
-from src.agent.decision.policy import decide_actions
+from src.agent.decision.policy import decide_actions_with_intents
 from src.agent.state import AgentState
 from src.agent.event import Event
 from src.services.llm_service import LLMService
@@ -151,12 +151,12 @@ class LLMIntentPlannerTestCase(unittest.TestCase):
 
         self.assertEqual(guarded[0].type, "no_op")
 
-    def test_policy_decide_actions_still_returns_actions(self) -> None:
+    def test_policy_decide_actions_with_intents_returns_actions(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store_path = Path(temp_dir) / "runtime_store.json"
             state = AgentState()
             llm_service = SpyLLMService()
-            actions = decide_actions(
+            _, actions = decide_actions_with_intents(
                 previous_state=state,
                 current_state=state,
                 event=Event(type="user_text_input", timestamp=1010, payload={"text": "你好呀", "source": "test"}),
