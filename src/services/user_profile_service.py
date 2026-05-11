@@ -235,6 +235,24 @@ class UserProfileService:
         self._save_profiles()
         return insight
 
+    def replace_insights(
+        self,
+        user_id: str | None,
+        insights: list[UserProfileInsight],
+        *,
+        timestamp: float | None = None,
+    ) -> str:
+        """替换用户画像 insight 列表。
+
+        这个入口供 MemoryPolicy 执行衰减/废弃/矛盾处理后使用；具体策略仍在
+        agent.memory.policy 中，service 只负责安全写回 profile。
+        """
+        profile = self.ensure_user(user_id)
+        profile.insights = list(insights)
+        self._mark_updated(profile, self._now(timestamp))
+        self._save_profiles()
+        return profile.info.user_id
+
     def render_profile(self, user_id: str | None) -> str:
         """渲染当前用户画像，供 /profile 展示。"""
         profile = self.ensure_user(user_id)

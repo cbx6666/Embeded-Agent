@@ -169,9 +169,11 @@ def build_scenario_events(name: str, start_ts: int | None = None) -> list[tuple[
 def create_runtime(store_path: str | Path, max_steps: int, output: ConsoleOutput) -> tuple[AgentCore, AgentLoop]:
     """创建一套用于终端验证的 AgentCore 与 AgentLoop。"""
     profile_store_path = Path(store_path).with_name("user_profiles_lab.json")
+    behavior_store_path = Path(store_path).with_name("behavior_stats_lab.json")
     core = build_default_core(
         store_path=store_path,
         profile_store_path=profile_store_path,
+        behavior_store_path=behavior_store_path,
         output=output,
     )
     loop = AgentLoop(core, max_steps=max_steps)
