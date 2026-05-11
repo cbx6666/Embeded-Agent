@@ -14,6 +14,8 @@ def reduce_state(state: AgentState, event: Event) -> AgentState:
         _handle_focus_start_requested(state, event)
     elif event.type == "focus_stop_requested":
         _handle_focus_stop_requested(state, event)
+    elif event.type == "user_switched":
+        state.current_user_id = str(event.payload.get("user_id", "default")).strip() or "default"
     elif event.type == "user_presence_updated":
         state.user.presence = str(event.payload.get("presence", state.user.presence))
         state.user.presence_confidence = _optional_float(event.payload.get("confidence"))
