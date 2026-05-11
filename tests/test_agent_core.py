@@ -41,8 +41,8 @@ class AgentCoreTestCase(unittest.TestCase):
         self.core.shutdown()
         self.temp_dir.cleanup()
 
-    def test_handle_event_focus_start_updates_state_and_actions(self) -> None:
-        actions = self.core.handle_event(
+    def test_handle_event_with_results_focus_start_updates_state_and_actions(self) -> None:
+        actions, _ = self.core.handle_event_with_results(
             Event(
                 type="focus_start_requested",
                 timestamp=1000,
@@ -69,7 +69,7 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertIn("start_timer", {result.action_type for result in results})
 
     def test_handle_event_focus_stop_records_session(self) -> None:
-        self.core.handle_event(
+        self.core.handle_event_with_results(
             Event(
                 type="focus_start_requested",
                 timestamp=1000,
@@ -77,7 +77,7 @@ class AgentCoreTestCase(unittest.TestCase):
             )
         )
 
-        actions = self.core.handle_event(
+        actions, _ = self.core.handle_event_with_results(
             Event(type="focus_stop_requested", timestamp=1120, payload={"source": "test"})
         )
 
@@ -87,7 +87,7 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertIn("stop_timer", {action.type for action in actions})
 
     def test_timer_finished_generates_completion_feedback(self) -> None:
-        self.core.handle_event(
+        self.core.handle_event_with_results(
             Event(
                 type="focus_start_requested",
                 timestamp=1000,
@@ -95,7 +95,7 @@ class AgentCoreTestCase(unittest.TestCase):
             )
         )
 
-        actions = self.core.handle_event(
+        actions, _ = self.core.handle_event_with_results(
             Event(type="timer_finished", timestamp=2500, payload={"timer": "focus"})
         )
 
@@ -104,7 +104,7 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertTrue(any("专注时间到了" in str(action.payload.get("text", "")) for action in actions))
 
     def test_status_query_uses_rules_without_llm(self) -> None:
-        self.core.handle_event(
+        self.core.handle_event_with_results(
             Event(
                 type="user_emotion_updated",
                 timestamp=2000,
@@ -112,7 +112,7 @@ class AgentCoreTestCase(unittest.TestCase):
             )
         )
 
-        actions = self.core.handle_event(
+        actions, _ = self.core.handle_event_with_results(
             Event(
                 type="user_text_input",
                 timestamp=2001,
@@ -124,7 +124,7 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertTrue(any("主导情绪" in str(action.payload.get("text", "")) for action in actions))
 
     def test_user_text_dialogue_calls_llm_and_returns_speak_display(self) -> None:
-        actions = self.core.handle_event(
+        actions, _ = self.core.handle_event_with_results(
             Event(type="user_text_input", timestamp=3000, payload={"text": "你好呀", "source": "test"})
         )
 
@@ -133,17 +133,17 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertIn("display", {action.type for action in actions})
 
     def test_rest_reminder_has_cooldown(self) -> None:
-        self.core.handle_event(
+        self.core.handle_event_with_results(
             Event(type="focus_start_requested", timestamp=0, payload={"duration_sec": 1500, "source": "test"})
         )
-        self.core.handle_event(
+        self.core.handle_event_with_results(
             Event(
                 type="user_attention_updated",
                 timestamp=1,
                 payload={"attention": "focused", "source": "mock"},
             )
         )
-        self.core.handle_event(
+        self.core.handle_event_with_results(
             Event(
                 type="user_emotion_updated",
                 timestamp=2,
@@ -151,10 +151,10 @@ class AgentCoreTestCase(unittest.TestCase):
             )
         )
 
-        first_actions = self.core.handle_event(
+        first_actions, _ = self.core.handle_event_with_results(
             Event(type="timer_ticked", timestamp=601, payload={"remaining_sec": 899, "timer": "focus"})
         )
-        second_actions = self.core.handle_event(
+        second_actions, _ = self.core.handle_event_with_results(
             Event(type="timer_ticked", timestamp=620, payload={"remaining_sec": 880, "timer": "focus"})
         )
 
@@ -162,10 +162,10 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertFalse(any(action.payload.get("reason") == "rest_reminder" for action in second_actions))
 
     def test_speech_and_text_share_same_status_logic(self) -> None:
-        text_actions = self.core.handle_event(
+        text_actions, _ = self.core.handle_event_with_results(
             Event(type="user_text_input", timestamp=6000, payload={"text": "当前状态", "source": "test"})
         )
-        speech_actions = self.core.handle_event(
+        speech_actions, _ = self.core.handle_event_with_results(
             Event(type="speech_recognized", timestamp=6001, payload={"text": "当前状态", "source": "asr"})
         )
 

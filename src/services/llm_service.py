@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-"""大模型服务模块。"""
+"""大模型服务模块。
+
+本服务只负责两件事：
+- 为普通对话生成自然语言回复；
+- 在受限候选 intent 范围内辅助选择 intent。
+
+它不直接修改 AgentState，也不直接生成 Action。
+"""
 
 import json
 import os
@@ -25,8 +32,10 @@ class LLMService:
         env_path: str | Path | None = None,
     ) -> None:
         """初始化 LLM 配置；未显式传入时优先从 .env 和环境变量读取。"""
+        # 先读项目根目录或指定路径下的 .env，再让显式参数和系统环境变量覆盖。
         env_values = _load_env_file(env_path)
 
+        # 同时兼容项目自定义变量、DeepSeek 变量和 OpenAI 变量，方便替换后端。
         self.api_key = (
             api_key
             or env_values.get("EMBEDED_AGENT_LLM_API_KEY")
@@ -36,6 +45,7 @@ class LLMService:
             or os.environ.get("DEEPSEEK_API_KEY")
             or os.environ.get("OPENAI_API_KEY", "")
         )
+        # base_url 使用 OpenAI 兼容接口形态，默认指向 DeepSeek。
         self.base_url = (
             base_url
             or env_values.get("EMBEDED_AGENT_LLM_BASE_URL")
@@ -46,6 +56,7 @@ class LLMService:
             or os.environ.get("OPENAI_BASE_URL")
             or "https://api.deepseek.com/v1"
         ).rstrip("/")
+        # 模型名也走同一套优先级，未配置时使用 deepseek-chat。
         self.model = (
             model
             or env_values.get("EMBEDED_AGENT_LLM_MODEL")
@@ -56,6 +67,7 @@ class LLMService:
             or os.environ.get("OPENAI_MODEL")
             or "deepseek-chat"
         )
+        # urllib 请求级超时，避免真实 API 卡住整个 Agent 主循环太久。
         raw_timeout = (
             timeout_sec
             or env_values.get("EMBEDED_AGENT_LLM_TIMEOUT_SEC")
@@ -66,6 +78,7 @@ class LLMService:
 
     def generate_reply(self, text: str, state: AgentState) -> str:
         """根据输入文本和状态生成自然语言回复。"""
+        # 未配置 key 时走本地 mock，保证离线开发和测试稳定。
         if not self._is_configured():
             return self._mock_generate_reply(text, state)
 
@@ -84,6 +97,7 @@ class LLMService:
         try:
             return self._chat_completion(messages, temperature=0.4)
         except Exception:
+            # 外部 LLM 失败不能拖垮 Agent，直接降级成本地回复。
             return self._mock_generate_reply(text, state)
 
     def choose_intents(
@@ -92,6 +106,7 @@ class LLMService:
         allowed_intent_types: list[str],
     ) -> str:
         """在允许的意图范围内返回一个 JSON 格式的选择结果。"""
+        # 意图选择同样支持离线 mock，且必须限定在 allowed_intent_types 内。
         if not self._is_configured():
             return self._mock_choose_intents(prompt, allowed_intent_types)
 
@@ -119,6 +134,7 @@ class LLMService:
         try:
             return self._chat_completion(messages, temperature=0.1)
         except Exception:
+            # 选择器失败时回退到 mock，调用方后续还会经过 IntentGuard。
             return self._mock_choose_intents(prompt, allowed_intent_types)
 
     def _is_configured(self) -> bool:
@@ -131,6 +147,7 @@ class LLMService:
 
     def _chat_completion(self, messages: list[dict[str, str]], *, temperature: float) -> str:
         """调用兼容 OpenAI Chat Completions 的接口并返回文本内容。"""
+        # 这里只封装最小 chat/completions 请求，避免把上层领域状态泄漏进底层 HTTP。
         payload = {
             "model": self.model,
             "messages": messages,
@@ -141,6 +158,7 @@ class LLMService:
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         """向 LLM 接口发送 JSON 请求并解析 JSON 响应。"""
+        # urllib 是标准库依赖，适合当前 MVP，部署时不额外引入 requests/httpx。
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(
             url=f"{self.base_url}{path}",
@@ -166,6 +184,7 @@ class LLMService:
 
     def _extract_message_content(self, response_data: dict[str, Any]) -> str:
         """从 Chat Completions 响应里提取第一条文本内容。"""
+        # 兼容常见 OpenAI 文本返回和部分多段 content 返回。
         choices = response_data.get("choices")
         if not isinstance(choices, list) or not choices:
             raise RuntimeError("LLM API 返回中缺少 choices。")
@@ -190,6 +209,7 @@ class LLMService:
 
     def _mock_generate_reply(self, text: str, state: AgentState) -> str:
         """在未配置真实 API 时提供本地回退回复。"""
+        # mock 回复只覆盖最基础的可用性，不做复杂语义理解。
         lowered = text.strip().lower()
         if any(word in lowered for word in ("你好", "hello", "hi")):
             return "你好，我已在线。你可以让我开始专注、结束专注，或用 /mock 更新状态。"
@@ -205,6 +225,7 @@ class LLMService:
         allowed_intent_types: list[str],
     ) -> str:
         """在未配置真实 API 时提供本地回退意图选择。"""
+        # mock 选择器模拟“只从允许集合中选”的约束，方便测试安全边界。
         lowered = prompt.strip().lower()
 
         selected_type = "answer_user"
@@ -242,6 +263,7 @@ class LLMService:
 
 def _load_env_file(env_path: str | Path | None) -> dict[str, str]:
     """从 .env 文件读取键值对，不依赖第三方库。"""
+    # 当前只读取一个候选 .env；不存在或不可读时直接返回空配置。
     candidates: list[Path] = []
     if env_path is not None:
         candidates.append(Path(env_path))
@@ -257,6 +279,7 @@ def _load_env_file(env_path: str | Path | None) -> dict[str, str]:
 
 def _parse_env_text(text: str) -> dict[str, str]:
     """解析 .env 文本内容。"""
+    # 支持最简单的 KEY=VALUE 形式，并剥掉成对引号。
     values: dict[str, str] = {}
     for raw_line in text.splitlines():
         line = raw_line.strip()

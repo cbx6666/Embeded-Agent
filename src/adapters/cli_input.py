@@ -37,6 +37,17 @@ HELP_TEXT = """可用命令：
   系统命令：
     /state
     /history
+    /profile
+    /users
+    /switch_user xiaoli
+    /switch_user xiaoli 小李
+    /set_info age 12
+    /set_info gender 女
+    /set_info identity 小学生
+    /set_info hobbies 画画,足球
+    /set_pref favorite_content_types 音乐,相声,脱口秀
+    /set_pref reminder_style 温和
+    /set_pref favorite_music_styles 轻音乐,古风
     /help
     /exit
 """

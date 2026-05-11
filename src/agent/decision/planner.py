@@ -6,6 +6,7 @@ from src.agent.decision.intent import AgentIntent
 from src.agent.decision.intent_guard import guard_intents
 from src.agent.decision.llm_intent_planner import plan_intents_with_llm
 from src.agent.event import Event
+from src.agent.memory.policy.personalization_policy import PersonalizedPolicy
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 
@@ -17,6 +18,7 @@ def build_candidate_intents(
     previous_state: AgentState,
     current_state: AgentState,
     event: Event,
+    personalized_policy: PersonalizedPolicy | None = None,
 ) -> list[AgentIntent]:
     """先由规则层生成候选意图，不直接决定具体动作。"""
     if event.type in {"user_text_input", "speech_recognized"}:
@@ -48,13 +50,13 @@ def build_candidate_intents(
             return [AgentIntent(type="complete_focus", priority=95, reason="timer_finished")]
         return [AgentIntent(type="no_op", reason="timer_finished_ignored")]
     if event.type == "timer_ticked":
-        return _plan_timer_tick(current_state, event)
+        return _plan_timer_tick(current_state, event, personalized_policy)
     if event.type == "user_attention_updated":
         return _plan_attention_feedback(current_state, event)
     if event.type in {"user_emotion_updated", "user_fatigue_updated"}:
-        return _plan_fatigue_feedback(current_state, event)
+        return _plan_fatigue_feedback(current_state, event, personalized_policy)
     if event.type == "system_triggered":
-        return _plan_system_trigger(current_state, event)
+        return _plan_system_trigger(current_state, event, personalized_policy)
     if event.type in {"user_presence_updated", "display_sensor_updated"}:
         return [AgentIntent(type="update_status_feedback", priority=5, reason=event.type)]
     if event.type in {"light_level_updated", "temperature_humidity_updated", "noise_level_updated"}:
@@ -71,9 +73,10 @@ def plan_intents(
     current_state: AgentState,
     event: Event,
     llm_service: LLMService | None = None,
+    personalized_policy: PersonalizedPolicy | None = None,
 ) -> list[AgentIntent]:
     """生成最终意图列表，并在需要时接入 LLM 辅助判断。"""
-    candidates = build_candidate_intents(previous_state, current_state, event)
+    candidates = build_candidate_intents(previous_state, current_state, event, personalized_policy)
 
     if llm_service is not None and _should_use_llm_intent_planner(event, candidates):
         llm_intents = plan_intents_with_llm(
@@ -152,11 +155,15 @@ def _plan_user_text_like(current_state: AgentState, event: Event) -> list[AgentI
     ]
 
 
-def _plan_timer_tick(current_state: AgentState, event: Event) -> list[AgentIntent]:
+def _plan_timer_tick(
+    current_state: AgentState,
+    event: Event,
+    personalized_policy: PersonalizedPolicy | None,
+) -> list[AgentIntent]:
     """在专注进行中检查是否满足休息提醒条件。"""
     if not current_state.focus.active:
         return []
-    if _should_trigger_rest_reminder(current_state, event.timestamp):
+    if _should_trigger_rest_reminder(current_state, event.timestamp, personalized_policy):
         return [
             AgentIntent(
                 type="suggest_rest",
@@ -187,7 +194,11 @@ def _plan_attention_feedback(current_state: AgentState, event: Event) -> list[Ag
     ]
 
 
-def _plan_fatigue_feedback(current_state: AgentState, event: Event) -> list[AgentIntent]:
+def _plan_fatigue_feedback(
+    current_state: AgentState,
+    event: Event,
+    personalized_policy: PersonalizedPolicy | None,
+) -> list[AgentIntent]:
     """处理疲劳和情绪变化，必要时转成休息建议。"""
     fatigue = current_state.user.fatigue_level
     emotion = current_state.user.emotion
@@ -195,7 +206,7 @@ def _plan_fatigue_feedback(current_state: AgentState, event: Event) -> list[Agen
         return [AgentIntent(type="update_status_feedback", priority=5, reason="fatigue_or_emotion_updated")]
     if not current_state.focus.active:
         return [AgentIntent(type="update_status_feedback", priority=5, reason="fatigue_not_in_focus")]
-    if current_state.focus.elapsed_sec < TIRED_REMINDER_MIN_FOCUS_SEC:
+    if current_state.focus.elapsed_sec < _rest_reminder_threshold(personalized_policy):
         return [AgentIntent(type="no_op", reason="fatigue_too_early")]
     if _is_in_cooldown(current_state, "fatigue_warning", event.timestamp):
         return [AgentIntent(type="no_op", reason="fatigue_in_cooldown")]
@@ -226,7 +237,11 @@ def _plan_environment_feedback(current_state: AgentState, event: Event) -> list[
     return [AgentIntent(type="no_op", reason="environment_normal")]
 
 
-def _plan_system_trigger(current_state: AgentState, event: Event) -> list[AgentIntent]:
+def _plan_system_trigger(
+    current_state: AgentState,
+    event: Event,
+    personalized_policy: PersonalizedPolicy | None,
+) -> list[AgentIntent]:
     """处理内部回流事件和自主检查事件。"""
     trigger = str(event.payload.get("trigger", "")).strip()
 
@@ -248,22 +263,26 @@ def _plan_system_trigger(current_state: AgentState, event: Event) -> list[AgentI
             )
         ]
     if trigger == "periodic_check":
-        return _plan_periodic_check(current_state, event)
+        return _plan_periodic_check(current_state, event, personalized_policy)
     if trigger == "user_idle_check":
         return _plan_user_idle_check(current_state, event)
     if trigger == "focus_health_check":
-        return _plan_focus_health_check(current_state, event)
+        return _plan_focus_health_check(current_state, event, personalized_policy)
     if trigger == "environment_check":
         return _plan_environment_check(current_state, event)
     return [AgentIntent(type="no_op", reason="unknown_system_trigger")]
 
 
-def _plan_periodic_check(current_state: AgentState, event: Event) -> list[AgentIntent]:
+def _plan_periodic_check(
+    current_state: AgentState,
+    event: Event,
+    personalized_policy: PersonalizedPolicy | None,
+) -> list[AgentIntent]:
     """周期检查先判断专注健康，再判断环境是否需要提醒。"""
     if current_state.user.presence == "away":
         return [AgentIntent(type="no_op", reason="periodic_check_user_away")]
     if current_state.focus.active:
-        health_intents = _plan_focus_health_check(current_state, event)
+        health_intents = _plan_focus_health_check(current_state, event, personalized_policy)
         if not _only_no_op(health_intents):
             return health_intents
         environment_intents = _plan_environment_check(current_state, event)
@@ -304,7 +323,11 @@ def _plan_user_idle_check(current_state: AgentState, event: Event) -> list[Agent
     ]
 
 
-def _plan_focus_health_check(current_state: AgentState, event: Event) -> list[AgentIntent]:
+def _plan_focus_health_check(
+    current_state: AgentState,
+    event: Event,
+    personalized_policy: PersonalizedPolicy | None,
+) -> list[AgentIntent]:
     """专注健康检查优先看疲劳，再看是否分心。"""
     if current_state.user.presence == "away":
         return [AgentIntent(type="no_op", reason="focus_health_user_away")]
@@ -312,7 +335,7 @@ def _plan_focus_health_check(current_state: AgentState, event: Event) -> list[Ag
         return [AgentIntent(type="no_op", reason="focus_health_not_active")]
 
     if current_state.user.fatigue_level in {"moderate", "high"} or current_state.user.emotion in {"tired", "stressed"}:
-        if current_state.focus.elapsed_sec < TIRED_REMINDER_MIN_FOCUS_SEC:
+        if current_state.focus.elapsed_sec < _rest_reminder_threshold(personalized_policy):
             return [AgentIntent(type="no_op", reason="focus_health_too_early")]
         if _is_in_cooldown(current_state, "rest_reminder", event.timestamp):
             return [AgentIntent(type="no_op", reason="focus_health_rest_in_cooldown")]
@@ -372,7 +395,11 @@ def _current_environment_level(state: AgentState) -> str | None:
     return None
 
 
-def _should_trigger_rest_reminder(state: AgentState, now_ts: int) -> bool:
+def _should_trigger_rest_reminder(
+    state: AgentState,
+    now_ts: int,
+    personalized_policy: PersonalizedPolicy | None,
+) -> bool:
     """统一判断当前是否满足休息提醒条件。"""
     if not state.focus.active or state.focus.start_ts is None:
         return False
@@ -382,9 +409,16 @@ def _should_trigger_rest_reminder(state: AgentState, now_ts: int) -> bool:
         return False
     if state.user.fatigue_level not in {"moderate", "high"} and state.user.emotion != "tired":
         return False
-    if state.focus.elapsed_sec < TIRED_REMINDER_MIN_FOCUS_SEC:
+    if state.focus.elapsed_sec < _rest_reminder_threshold(personalized_policy):
         return False
     return not _is_in_cooldown(state, "rest_reminder", now_ts)
+
+
+def _rest_reminder_threshold(personalized_policy: PersonalizedPolicy | None) -> int:
+    """读取个性化休息提醒阈值；没有长期策略时使用默认规则。"""
+    if personalized_policy is None:
+        return TIRED_REMINDER_MIN_FOCUS_SEC
+    return int(personalized_policy.rest_reminder_min_focus_sec)
 
 
 def _is_in_cooldown(state: AgentState, reason: str, now_ts: int) -> bool:
