@@ -1,6 +1,10 @@
 ﻿from __future__ import annotations
 
-"""专注计时服务模块。"""
+"""专注计时服务模块。
+
+TimerService 只负责产生倒计时 tick；
+tick 之后要更新状态、触发提醒还是结束专注，由 AgentCore 再包装成标准事件处理。
+"""
 
 import threading
 import time
@@ -14,15 +18,20 @@ class TimerService:
         # background=False 主要用于测试场景，此时可以进入计时状态，
         # 但不真正创建后台 tick 线程。
         self.background = background
+        # 运行中的后台计时线程；测试模式下保持为 None。
         self._thread: threading.Thread | None = None
+        # stop_event 用于通知旧线程退出；每次 start 会重建一个新的事件对象。
         self._stop_event = threading.Event()
         self._active = False
+        # 保护 _active、_thread、_stop_event 的并发读写。
         self._lock = threading.Lock()
 
     def start(self, duration_sec: int, callback: Callable[[int], None]) -> None:
         """启动一轮新的倒计时。"""
+        # 新计时开始前先停止旧计时，保证同一时间只有一个 focus timer。
         self.stop()
         if duration_sec <= 0:
+            # 非正时长视为立即结束，仍然通过 callback 走统一事件链路。
             callback(0)
             return
 
@@ -45,6 +54,7 @@ class TimerService:
         """停止当前倒计时。"""
         with self._lock:
             self._active = False
+            # 后台线程会在下一轮循环看到 stop_event 后退出。
             self._stop_event.set()
 
     def is_active(self) -> bool:
@@ -67,6 +77,7 @@ class TimerService:
             # 是否只更新状态，还是进一步触发提醒或结束动作，由上层决定。
             callback(remaining_sec)
             if remaining_sec <= 0:
+                # 倒计时自然结束后也标记 inactive。
                 self.stop()
                 break
             time.sleep(1)
