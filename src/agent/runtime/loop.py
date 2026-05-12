@@ -36,7 +36,7 @@ class AgentLoop:
             current_event = queue.popleft()
             step += 1
 
-            actions, results = self.core.handle_event_with_results(current_event)
+            actions, results = self.core.handle_event(current_event)
             all_actions.extend(actions)
             self._record_trace(current_event, step, actions, results)
 
@@ -89,6 +89,11 @@ class AgentLoop:
                 }
                 for result in results
             ],
+            decision_metadata=(
+                self.core.last_decision_result.trace_summary()
+                if self.core.last_decision_result is not None
+                else {}
+            ),
             loop_step=loop_step,
         )
         self.recent_traces.append(trace)

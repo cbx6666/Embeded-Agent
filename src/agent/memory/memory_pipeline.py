@@ -1,147 +1,102 @@
-from __future__ import annotations
-
-"""长期行为记忆流水线。
-
-MemoryPipeline 统一串联：
-Event/Action -> BehaviorExtractor -> BehaviorUpdater -> InsightExtractor
--> MemoryPolicy -> UserProfileService。
-
-它不是 God Class：具体提取、统计、画像抽取、写入策略都委托给独立组件。
 """
+MemoryPipeline 门面模块。
+
+本模块是 AgentCore 调用 LLM-managed Memory 的入口。上游输入是当前 Event、
+Action outcome 和 AgentState，下游输出是 MemoryRunResult 或 ProfileSnapshot。
+
+本模块不做记忆价值判断、不直接写 profile，也不参与当前动作决策；它只把 Core
+与 LLMMemoryManager、ProfileSnapshotBuilder 连接起来。
+"""
+
+from __future__ import annotations
 
 from src.agent.action import Action
 from src.agent.event import Event
-from src.agent.memory.behavior.behavior_stats import BehaviorStats
-from src.agent.memory.behavior.behavior_updater import BehaviorUpdater
-from src.agent.memory.extractor.behavior_extractor import BehaviorExtractor, BehaviorSignal
-from src.agent.memory.extractor.insight_extractor import InsightExtractor
-from src.agent.memory.policy.memory_policy import MemoryPolicy
-from src.agent.memory.policy.personalization_policy import PersonalizationPolicy, PersonalizedPolicy
+from src.agent.memory.llm_memory_manager import LLMMemoryManager, MemoryContextBuilder, MemoryRunResult
+from src.agent.memory.memory_store import MemoryStore
+from src.agent.memory.profile_snapshot_builder import ProfileSnapshot, ProfileSnapshotBuilder
 from src.agent.state import AgentState
+from src.services.llm_service import LLMService
 from src.services.user_profile_service import UserProfileService
-from src.storage.behavior_store import BehaviorStore
 
 
 class MemoryPipeline:
-    """长期行为建模流水线入口。"""
+    """LLM-managed Memory 的主入口。
+
+    输入事件或动作结果，输出记忆处理结果；同时提供 build_profile_snapshot，
+    让 DecisionPipeline 只消费快照而不是直接读取 store。
+    """
 
     def __init__(
         self,
-        store: BehaviorStore,
-        profile_service: UserProfileService,
+        store: MemoryStore | None = None,
         *,
-        behavior_extractor: BehaviorExtractor | None = None,
-        behavior_updater: BehaviorUpdater | None = None,
-        insight_extractor: InsightExtractor | None = None,
-        memory_policy: MemoryPolicy | None = None,
-        personalization_policy: PersonalizationPolicy | None = None,
+        context_builder: MemoryContextBuilder | None = None,
+        manager: LLMMemoryManager | None = None,
+        profile_snapshot_builder: ProfileSnapshotBuilder | None = None,
     ) -> None:
-        self.store = store
-        self.profile_service = profile_service
-        self.behavior_extractor = behavior_extractor or BehaviorExtractor()
-        self.behavior_updater = behavior_updater or BehaviorUpdater()
-        self.insight_extractor = insight_extractor or InsightExtractor()
-        self.memory_policy = memory_policy or MemoryPolicy()
-        self.personalization_policy = personalization_policy or PersonalizationPolicy(profile_service)
-        self.stats_by_user = {
-            user_id: BehaviorStats.from_dict(raw_stats)
-            for user_id, raw_stats in self.store.load_stats().items()
+        self.store = store or MemoryStore()
+        self.context_builder = context_builder or MemoryContextBuilder()
+        self.manager = manager or LLMMemoryManager(self.store)
+        self.profile_snapshot_builder = profile_snapshot_builder or ProfileSnapshotBuilder(self.store)
+        self.last_result: MemoryRunResult | None = None
+
+    def process_event(
+        self,
+        user_id: str,
+        event: Event,
+        state: AgentState,
+        llm_service: LLMService,
+    ) -> MemoryRunResult:
+        """处理事件侧记忆观察。"""
+
+        context = self.context_builder.build(user_id=user_id, event=event, state=state)
+        self.last_result = self.manager.update(context, llm_service)
+        return self.last_result
+
+    def process_actions(
+        self,
+        user_id: str,
+        actions: list[Action],
+        timestamp: int,
+        *,
+        source_event: Event | None = None,
+        state: AgentState | None = None,
+        llm_service: LLMService | None = None,
+    ) -> MemoryRunResult | None:
+        """处理动作结果反馈。
+
+        缺少 source_event、state 或 llm_service 时直接跳过，避免不完整 outcome
+        写入长期记忆。
+        """
+
+        if llm_service is None or source_event is None or state is None:
+            return None
+        outcome = {
+            "actions": [{"type": action.type, "payload": dict(action.payload)} for action in actions],
+            "timestamp": timestamp,
         }
+        context = self.context_builder.build(
+            user_id=user_id,
+            event=source_event,
+            state=state,
+            outcome=outcome,
+        )
+        self.last_result = self.manager.process(context, llm_service)
+        return self.last_result
 
-    def process_event(self, user_id: str | None, event: Event, state: AgentState) -> None:
-        """处理一条标准事件，更新长期行为统计并尝试刷新画像。"""
-        normalized_user_id = self.profile_service.ensure_user_id(user_id)
-        signals = self.behavior_extractor.extract_event(event, state)
-        self._process_signals(normalized_user_id, signals, timestamp=event.timestamp)
+    def build_profile_snapshot(
+        self,
+        user_id: str,
+        state: AgentState,
+        event: Event | None = None,
+        profile_service: UserProfileService | None = None,
+    ) -> ProfileSnapshot:
+        """为决策链路生成 ProfileSnapshot。"""
 
-    def process_actions(self, user_id: str | None, actions: list[Action], timestamp: int) -> None:
-        """处理本轮动作，记录 Agent 给出的休息建议等交互事实。"""
-        normalized_user_id = self.profile_service.ensure_user_id(user_id)
-        signals: list[BehaviorSignal] = []
-        seen_suggestion_keys: set[tuple[str, object]] = set()
-        for action in actions:
-            for signal in self.behavior_extractor.extract_action(action, timestamp):
-                # 同一轮提醒通常同时生成 speak 和 display，长期统计只计一次建议。
-                key = (signal.type, signal.payload.get("content_type"))
-                if signal.type == "break_suggestion_shown" and key in seen_suggestion_keys:
-                    continue
-                seen_suggestion_keys.add(key)
-                signals.append(signal)
-        self._process_signals(normalized_user_id, signals, timestamp=timestamp)
-
-    def build_personalized_policy(self, user_id: str | None) -> PersonalizedPolicy:
-        """生成当前用户的个性化策略快照，供 Planner/Realizer 使用。"""
-        return self.personalization_policy.build(user_id)
-
-    def get_stats(self, user_id: str | None) -> BehaviorStats:
-        """读取某个用户的长期行为统计，不存在时自动创建空统计。"""
-        normalized_user_id = self.profile_service.ensure_user_id(user_id)
-        return self._ensure_stats(normalized_user_id)
-
-    def _process_signals(self, user_id: str, signals: list[BehaviorSignal], *, timestamp: int) -> None:
-        """统一处理行为信号，避免事件和动作两条入口重复代码。"""
-        if not signals:
-            return
-
-        stats = self._ensure_stats(user_id)
-        changed = False
-        for signal in signals:
-            changed = self.behavior_updater.update(stats, signal) or changed
-
-        if not changed:
-            return
-
-        self._save_stats()
-        self._refresh_insights(user_id, stats, timestamp=timestamp)
-
-    def _refresh_insights(self, user_id: str, stats: BehaviorStats, *, timestamp: int) -> None:
-        """从统计中抽取画像候选，并通过 MemoryPolicy 后写入 profile。"""
-        profile = self.profile_service.get_user(user_id)
-
-        decayed, decay_changed = self.memory_policy.decay_insights(profile.insights, now=float(timestamp))
-        if decay_changed:
-            self.profile_service.replace_insights(user_id, decayed, timestamp=timestamp)
-            profile = self.profile_service.get_user(user_id)
-
-        for candidate in self.insight_extractor.extract(stats):
-            decision = self.memory_policy.evaluate(candidate, profile.insights)
-            if not decision.allow_write:
-                continue
-
-            if decision.contradicted_contents:
-                remaining = [
-                    insight
-                    for insight in profile.insights
-                    if not (
-                        insight.insight_type == candidate.insight_type
-                        and insight.content in decision.contradicted_contents
-                    )
-                ]
-                self.profile_service.replace_insights(user_id, remaining, timestamp=timestamp)
-                profile = self.profile_service.get_user(user_id)
-
-            self.profile_service.upsert_insight(
-                user_id,
-                insight_type=candidate.insight_type,
-                content=candidate.content,
-                confidence=candidate.confidence,
-                evidence_count=candidate.evidence_count,
-                timestamp=timestamp,
-            )
-            profile = self.profile_service.get_user(user_id)
-
-    def _ensure_stats(self, user_id: str) -> BehaviorStats:
-        """确保某个用户有独立的长期行为统计对象。"""
-        stats = self.stats_by_user.get(user_id)
-        if stats is None:
-            stats = BehaviorStats()
-            self.stats_by_user[user_id] = stats
-            self._save_stats()
-        return stats
-
-    def _save_stats(self) -> None:
-        """统一保存所有用户的长期行为统计。"""
-        self.store.save_stats({
-            user_id: stats.to_dict()
-            for user_id, stats in self.stats_by_user.items()
-        })
+        return self.profile_snapshot_builder.build(
+            user_id=user_id,
+            state=state,
+            event=event,
+            profile_service=profile_service,
+        )

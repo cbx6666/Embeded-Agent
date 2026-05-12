@@ -17,7 +17,7 @@ def build_internal_events_from_results(
     """根据动作执行结果保守地生成内部事件。"""
     del state
 
-    if not actions or all(action.type == "none" for action in actions):
+    if not actions:
         return _failure_events(results)
 
     internal_events: list[Event] = []
@@ -26,7 +26,7 @@ def build_internal_events_from_results(
     successful_types = {
         result.action_type
         for result in results
-        if result.success and result.action_type != "none"
+        if result.success
     }
     event_ts = _event_timestamp(event, results)
 

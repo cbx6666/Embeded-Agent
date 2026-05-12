@@ -25,6 +25,8 @@
 | `set_tts_speed` | 设置语速。 | 只改 TTS 参数。 |
 | `speak` | 播报文本。 | 是推荐主 Action；提醒/关怀/异常语义放在 payload 的 `kind` / `level` / `reason` 中。 |
 
+无动作场景不属于语音 Action。当前系统统一用空 `Action` 列表表示“不执行”，不再定义 `none`。
+
 建议的 `speak.payload` 字段：
 
 - `text`

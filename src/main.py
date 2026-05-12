@@ -169,10 +169,10 @@ def main() -> None:
                 continue
 
             if mock_event is not None:
-                core.handle_event_with_results(mock_event)
+                core.handle_event(mock_event)
                 continue
 
-            core.handle_event_with_results(parse_cli_event(command))
+            core.handle_event(parse_cli_event(command))
     finally:
         if vision_adapter is not None:
             vision_adapter.stop()
