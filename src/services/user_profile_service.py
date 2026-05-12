@@ -244,8 +244,8 @@ class UserProfileService:
     ) -> str:
         """替换用户画像 insight 列表。
 
-        这个入口供 MemoryPolicy 执行衰减/废弃/矛盾处理后使用；具体策略仍在
-        agent.memory.policy 中，service 只负责安全写回 profile。
+        这个入口只用于写回已经过边界校验的 profile 数据；记忆提取、
+        合并和冲突处理由 LLM-managed memory 链路负责。
         """
         profile = self.ensure_user(user_id)
         profile.insights = list(insights)

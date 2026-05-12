@@ -21,7 +21,7 @@
 
 - 行为模块只报告“看到了什么”。
 - 如果用户分心、离席、长时间异常，仍然只发 Event。
-- 是否提醒、如何提醒，由内核再转成显示、语音、灯光模块的能力 Action。
+- 是否提醒、如何提醒，由 LLM-centered `DecisionPipeline` 决策，再由 `ActionRealizer` 转成显示、语音、灯光模块的能力 Action。
 
 ## Adapter
 

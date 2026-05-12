@@ -5,7 +5,7 @@
 - 两路融合后经滞回得到疲劳档位；人脸 crop 上跑情绪模型；
 - 仅通过标准 Event 向上游投递结果。
 
-唯一依赖的内核接口：`handle_event_with_results(Event)`（由注入的 sink 提供）。
+唯一依赖的内核接口：`handle_event(Event)`（由注入的 sink 提供）。
 """
 
 from __future__ import annotations
@@ -43,9 +43,9 @@ from .pipeline import (
 
 
 class EventEmitSink(Protocol):
-    """只要能接收标准事件即可（通常为 `AgentCore.handle_event_with_results`）。"""
+    """只要能接收标准事件即可（通常为 `AgentCore.handle_event`）。"""
 
-    def handle_event_with_results(self, event: Event) -> Any:
+    def handle_event(self, event: Event) -> Any:
         ...
 
 
@@ -292,7 +292,7 @@ class VisionAffectInputAdapter:
         timestamp: int | None = None,
     ) -> None:
         ts = int(time.time()) if timestamp is None else int(timestamp)
-        self._sink.handle_event_with_results(
+        self._sink.handle_event(
             make_fatigue_event(
                 fatigue_level=level,
                 perclos=round(float(perclos), 4) if perclos is not None else None,
@@ -361,7 +361,7 @@ class VisionAffectInputAdapter:
                     )
                 except Exception as exc:
                     print(f"[vision_affect] 情绪状态写入 SQLite 失败: {exc}", file=sys.stderr)
-            self._sink.handle_event_with_results(event)
+            self._sink.handle_event(event)
             return
 
         if emo_key.startswith("emo:"):
@@ -382,7 +382,7 @@ class VisionAffectInputAdapter:
                     )
                 except Exception as exc:
                     print(f"[vision_affect] 情绪状态写入 SQLite 失败: {exc}", file=sys.stderr)
-            self._sink.handle_event_with_results(
+            self._sink.handle_event(
                 user_emotion_updated_standard(
                     timestamp=summary.timestamp,
                     emotion=emotion,

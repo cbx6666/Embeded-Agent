@@ -1,10 +1,24 @@
-"""长期行为记忆与用户建模模块。
+"""Memory 包公开入口。
 
-本包只处理“行为统计 -> 画像候选 -> 记忆策略 -> 个性化策略”链路，
-不做聊天记录 RAG，也不保存完整对话历史。
+本包只导出 LLM-managed Memory 主链路需要的结构：LLMMemoryManager、
+MemoryValidator、MemoryStore、MemoryPipeline 和 ProfileSnapshotBuilder。
+调用方不应绕过快照直接把 MemoryStore 注入决策层。
 """
 
+from src.agent.memory.llm_memory_manager import LLMMemoryManager, MemoryContextBuilder, MemoryValidator
+from src.agent.memory.schemas import MemoryCandidate
+from src.agent.memory.memory_pipeline import MemoryPipeline
+from src.agent.memory.memory_store import MemoryStore, StoredMemory
+from src.agent.memory.profile_snapshot_builder import ProfileSnapshot, ProfileSnapshotBuilder
+
 __all__ = [
-    "memory_candidate",
-    "memory_pipeline",
+    "LLMMemoryManager",
+    "MemoryCandidate",
+    "MemoryContextBuilder",
+    "MemoryPipeline",
+    "MemoryStore",
+    "MemoryValidator",
+    "ProfileSnapshot",
+    "ProfileSnapshotBuilder",
+    "StoredMemory",
 ]

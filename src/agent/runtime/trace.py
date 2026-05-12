@@ -16,4 +16,5 @@ class AgentDecisionTrace:
     intents: list[dict[str, Any]] = field(default_factory=list)
     actions: list[dict[str, Any]] = field(default_factory=list)
     results: list[dict[str, Any]] = field(default_factory=list)
+    decision_metadata: dict[str, Any] = field(default_factory=dict)
     loop_step: int = 0
