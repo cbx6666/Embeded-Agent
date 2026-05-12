@@ -3,7 +3,7 @@
 """运行时状态 JSON 持久化模块。
 
 JsonStore 保存的是 AgentState 快照，属于运行时状态；
-长期用户画像和偏好由 ProfileStore 单独保存。
+显式用户画像由 UserProfileStore 单独保存。
 """
 
 import json

@@ -4,7 +4,7 @@
 本模块只负责把标准 Event 确定性归约到 AgentState。它位于 AgentCore 主链路
 最前段：上游输入是 Event，下游输出是更新后的运行时状态。
 
-Reducer 不调用 LLM、不生成 Intent、不生成 Action、不写长期 MemoryStore，也
+Reducer 不调用 LLM、不生成 Intent、不生成 Action、不写长期 LongTermMemoryStore，也
 不读取策略配置。未注册事件会被安全忽略并返回原状态。
 """
 
@@ -175,7 +175,7 @@ def _complete_focus_session(state: AgentState, end_ts: int, reason: str) -> None
     target_duration_sec = state.focus.target_duration_sec or 0
     actual_duration_sec = 0 if start_ts is None else max(0, end_ts - start_ts)
 
-    state.memory.focus_sessions.append(
+    state.runtime_history.focus_sessions.append(
         {
             "start_ts": start_ts,
             "end_ts": end_ts,
@@ -185,8 +185,8 @@ def _complete_focus_session(state: AgentState, end_ts: int, reason: str) -> None
             "reason": reason,
         }
     )
-    state.memory.focus_session_count += 1
-    state.memory.focus_total_duration_sec += actual_duration_sec
+    state.runtime_history.focus_session_count += 1
+    state.runtime_history.focus_total_duration_sec += actual_duration_sec
 
     state.interaction.mode = "normal"
     state.interaction.dialogue_state = "idle"

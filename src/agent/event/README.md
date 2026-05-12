@@ -12,7 +12,7 @@
 
 - `event_model.py`：统一 Event dataclass。
 - `types.py`：注册 EventType。
-- `factories.py`：传感器/语音/行为输入到标准 Event 的薄构造函数。
+- `event_builders.py`：传感器/语音/行为输入到标准 Event 的薄构造函数。
 
 ## 上游和下游
 
@@ -20,7 +20,7 @@
 
 ## 扩展方式
 
-新增事件：加入 `types.py`，如需便捷构造则补充 `factories.py`，再在 reducer 中决定是否需要状态归约。
+新增事件：加入 `types.py`，如需便捷构造则补充 `event_builders.py`，再在 reducer 中决定是否需要状态归约。
 
 ## 示例
 

@@ -6,27 +6,14 @@ ResponseWriter，完成一轮高层认知决策。上游输入是 `AgentContextB
 生成的紧凑 AgentContext，下游输出是包含 SituationFrame、IntentPlan、安全审查
 和表达草稿的 AgentRun。
 
-本模块不直接生成 Action，不修改 AgentState，也不直接写入 MemoryStore。底层
+本模块不直接生成 Action，不修改 AgentState，也不直接写入 LongTermMemoryStore。底层
 动作落地由 `decision/action_realizer.py` 负责，安全边界由 validator 和 guard
 负责。
 """
 
 from __future__ import annotations
 
-"""
-LLM Agent 编排模块。
-
-本模块负责串联 SituationAnalyst、IntentPlanner、SafetyCritic 和
-ResponseWriter，完成一轮高层认知决策。上游输入是
-`AgentContextBuilder` 生成的紧凑 AgentContext，下游输出是包含
-SituationFrame、IntentPlan、安全审查和表达草稿的 AgentRun。
-
-本模块不直接生成 Action，不修改 AgentState，也不直接写入 MemoryStore。
-底层动作落地由 `decision/action_realizer.py` 负责，安全边界由
-`decision/validator.py` 和 `decision/guard.py` 负责。
-"""
-
-from src.agent.llm_agent.agent_context import AgentContext
+from src.agent.decision.agent_context_builder import AgentContext
 from src.agent.llm_agent.roles.intent_planner import IntentPlanner
 from src.agent.llm_agent.roles.response_writer import ResponseWriter
 from src.agent.llm_agent.roles.safety_critic import SafetyCritic

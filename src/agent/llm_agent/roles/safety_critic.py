@@ -14,7 +14,7 @@ SafetyReview 以及可能被修订的 IntentPlan。
 from pathlib import Path
 
 from src.agent.decision.intent_model import IntentPlan
-from src.agent.llm_agent.agent_context import AgentContext
+from src.agent.decision.agent_context_builder import AgentContext
 from src.agent.llm_agent.schemas import SafetyReview, SituationFrame, parse_json_object
 from src.services.llm_service import LLMService
 

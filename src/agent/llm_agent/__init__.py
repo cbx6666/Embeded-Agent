@@ -4,7 +4,7 @@
 LLMAgentOrchestrator.decide 使用认知链路，而不是直接让角色控制动作或状态。
 """
 
-from src.agent.llm_agent.agent_context import AgentContext, AgentContextBuilder
+from src.agent.decision.agent_context_builder import AgentContext, AgentContextBuilder
 from src.agent.llm_agent.agent_orchestrator import LLMAgentOrchestrator
 from src.agent.llm_agent.schemas import AgentRun, ResponseDraft, SafetyReview, SituationFrame
 

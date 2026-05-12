@@ -14,7 +14,7 @@ from src.agent.runtime.autonomy import build_autonomous_check_event
 from src.agent.runtime.internal_events import build_internal_events_from_results
 from src.agent.runtime.loop import AgentLoop
 from src.services.llm_service import LLMService
-from src.services.memory_service import MemoryService
+from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.storage.json_store import JsonStore
 
@@ -38,7 +38,7 @@ class AgentLoopTestCase(unittest.TestCase):
         self.core = AgentCore(
             output=ConsoleOutput(silent=True),
             timer_service=TimerService(background=False),
-            memory_service=MemoryService(),
+            runtime_history_service=RuntimeHistoryService(),
             llm_service=self.llm,
             store=JsonStore(Path(self.temp_dir.name) / "runtime_store.json"),
         )

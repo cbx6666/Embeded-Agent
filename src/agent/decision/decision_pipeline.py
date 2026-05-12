@@ -1,48 +1,39 @@
-"""
-LLM-centered 决策流水线模块。
-
-本模块是 Agent 高层决策的唯一入口。它输入 Reducer 更新后的 AgentState、
-当前 Event、ProfileSnapshot 和 LLMService，输出 DecisionResult。内部顺序是：
-AgentContextBuilder -> LLMAgentOrchestrator -> IntentPlanValidator ->
-DeterministicGuard -> ActionRealizer。
-
-本模块不做关键词理解、不读取旧策略配置、不直接执行设备、不写入长期记忆。
-它只负责串联认知链路和确定性边界，并把每个阶段的结果写入 trace metadata。
-"""
-
 from __future__ import annotations
 
+"""DecisionPipeline 决策流水线。
+
+它是什么：
+DecisionPipeline 是 Agent 高层决策入口。它只接收 Event、AgentState、PersonalContext
+和 LLMService，输出 DecisionResult。
+
+它不是什么：
+它不读取 LongTermMemoryStore，不读取 UserProfileStore，不写 RuntimeHistory，不写
+LongTermMemory，也不直接执行设备动作。
+
+为什么存在：
+决策层必须只消费已经构建好的 PersonalContext，保证数据来源集中在
+PersonalContextBuilder，避免“决策层到处找记忆”的架构熵增。
+
+边界：
+内部顺序是 AgentContextBuilder -> LLMAgentOrchestrator -> IntentPlanValidator ->
+DeterministicGuard -> ActionRealizer。任何 LLM 输出都必须经过 validator/guard 后才能变成 Action。
 """
-LLM-centered 决策流水线模块。
 
-本模块是 Agent 高层决策的唯一入口。它输入 Reducer 更新后的 AgentState、
-当前 Event、ProfileSnapshot 和 LLMService，输出 DecisionResult。内部顺序是：
-AgentContextBuilder -> LLMAgentOrchestrator -> IntentPlanValidator ->
-DeterministicGuard -> ActionRealizer。
-
-本模块不做关键词理解、不读取旧策略配置、不直接执行设备、不写入长期记忆。
-它只负责串联认知链路和确定性边界，并把每个阶段的结果写入 trace metadata。
-"""
-
+from src.agent.context.personal_context import PersonalContext
 from src.agent.decision.action_realizer import ActionRealizer
+from src.agent.decision.agent_context_builder import AgentContextBuilder
 from src.agent.decision.decision_result import DecisionResult
 from src.agent.decision.guard import DeterministicGuard
 from src.agent.decision.intent_model import no_op_plan
 from src.agent.decision.validator import IntentPlanValidator
 from src.agent.event import Event
-from src.agent.llm_agent import AgentContextBuilder, LLMAgentOrchestrator
-from src.agent.memory.profile_snapshot_builder import ProfileSnapshot, ProfileSnapshotBuilder
+from src.agent.llm_agent import LLMAgentOrchestrator
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
-from src.services.user_profile_service import UserProfileService
 
 
 class DecisionPipeline:
-    """LLM-centered 决策入口。
-
-    输入当前事件和状态，输出意图、动作以及可解释 trace。语义理解由 LLM 角色
-    完成；本类只负责编排和边界校验，不承担业务规则推理。
-    """
+    """LLM-centered 决策入口，只消费 PersonalContext。"""
 
     def __init__(
         self,
@@ -52,14 +43,12 @@ class DecisionPipeline:
         validator: IntentPlanValidator | None = None,
         guard: DeterministicGuard | None = None,
         action_realizer: ActionRealizer | None = None,
-        profile_snapshot_builder: ProfileSnapshotBuilder | None = None,
     ) -> None:
         self.context_builder = context_builder or AgentContextBuilder()
         self.orchestrator = orchestrator or LLMAgentOrchestrator()
         self.validator = validator or IntentPlanValidator()
         self.guard = guard or DeterministicGuard()
         self.action_realizer = action_realizer or ActionRealizer()
-        self.profile_snapshot_builder = profile_snapshot_builder or ProfileSnapshotBuilder()
         self.last_result: DecisionResult | None = None
 
     def decide(
@@ -69,29 +58,17 @@ class DecisionPipeline:
         current_state: AgentState,
         event: Event,
         llm_service: LLMService,
-        profile_service: UserProfileService | None = None,
+        personal_context: PersonalContext | None = None,
         personalized_policy: object | None = None,
-        profile_snapshot: ProfileSnapshot | None = None,
     ) -> DecisionResult:
-        """执行一轮 Event -> Intent -> Action 决策。
-
-        LLM 输出非法 schema 时降级为 no_op；Guard 拦截后仍会保留被拦截原因。
-        这样外部调试可以看到失败发生在 LLM、validator、guard 还是 realizer。
-        """
+        """执行一轮 Event -> Intent -> Action 决策。"""
 
         del personalized_policy
-
-        snapshot = profile_snapshot or self.profile_snapshot_builder.build(
-            user_id=current_state.current_user_id,
-            state=current_state,
-            event=event,
-            profile_service=profile_service,
-        )
         context = self.context_builder.build(
             previous_state=previous_state,
             current_state=current_state,
             event=event,
-            profile_snapshot=snapshot,
+            personal_context=personal_context,
         )
 
         agent_run = self.orchestrator.decide(context, llm_service)

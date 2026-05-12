@@ -10,22 +10,10 @@ AgentContext，下游输出是过滤后的 IntentPlan 与拦截原因。
 """
 
 from __future__ import annotations
-
-"""
-确定性 Guard 模块。
-
-本模块位于 IntentPlanValidator 之后、ActionRealizer 之前，负责执行不能交给
-LLM 的硬边界：高风险计划阻断、用户离场时禁止打扰、提醒冷却、以及非用户
-触发场景禁止自主 LLM 回复。上游输入是已通过 schema 校验的 IntentPlan 和
-AgentContext，下游输出是过滤后的 IntentPlan 与拦截原因。
-
-本模块不理解自然语言、不做业务规划、不生成 Action，也不修改 AgentState。
-"""
-
 from dataclasses import dataclass, field
 
 from src.agent.decision.intent_model import AgentIntent, IntentPlan, no_op_plan
-from src.agent.llm_agent.agent_context import AgentContext
+from src.agent.decision.agent_context_builder import AgentContext
 
 
 INTERRUPTIVE_INTENTS = {

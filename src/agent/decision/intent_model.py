@@ -14,42 +14,26 @@ from __future__ import annotations
 """Intent model for the LLM-centered decision boundary."""
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
-IntentType = Literal[
-    "answer_user",
-    "start_focus",
-    "stop_focus",
-    "complete_focus",
-    "suggest_rest",
-    "remind_distraction",
-    "update_status_feedback",
-    "adjust_environment_feedback",
-    "voice_interaction",
-    "display_update",
-    "continue_focus",
-    "reduce_reminder_frequency",
-    "set_tts_volume",
-    "no_op",
-]
-
-REGISTERED_INTENT_TYPES: tuple[IntentType, ...] = (
-    "answer_user",
-    "start_focus",
-    "stop_focus",
-    "complete_focus",
-    "suggest_rest",
-    "remind_distraction",
-    "update_status_feedback",
-    "adjust_environment_feedback",
-    "voice_interaction",
-    "display_update",
-    "continue_focus",
-    "reduce_reminder_frequency",
-    "set_tts_volume",
-    "no_op",
+REGISTERED_INTENT_TYPES: frozenset[str] = frozenset(
+    {
+        "answer_user",
+        "start_focus",
+        "stop_focus",
+        "complete_focus",
+        "suggest_rest",
+        "remind_distraction",
+        "update_status_feedback",
+        "adjust_environment_feedback",
+        "voice_interaction",
+        "display_update",
+        "continue_focus",
+        "reduce_reminder_frequency",
+        "set_tts_volume",
+        "no_op",
+    }
 )
-REGISTERED_INTENT_TYPE_SET = frozenset(REGISTERED_INTENT_TYPES)
 
 
 @dataclass

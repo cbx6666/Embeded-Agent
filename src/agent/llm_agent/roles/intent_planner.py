@@ -14,7 +14,7 @@ SituationAnalyst 的结构化理解和 AgentContext，下游输出是只包含�
 from pathlib import Path
 
 from src.agent.decision.intent_model import IntentPlan, REGISTERED_INTENT_TYPES
-from src.agent.llm_agent.agent_context import AgentContext
+from src.agent.decision.agent_context_builder import AgentContext
 from src.agent.llm_agent.schemas import SituationFrame, fallback_plan_for_event, parse_json_object
 from src.services.llm_service import LLMService
 
@@ -45,7 +45,7 @@ class IntentPlanner:
 
         prompt = (
             f"{_read_prompt(self.prompt_path)}\n\n"
-            f"Registered intent types: {list(REGISTERED_INTENT_TYPES)}\n\n"
+            f"Registered intent types: {sorted(REGISTERED_INTENT_TYPES)}\n\n"
             f"SituationFrame JSON:\n{situation.to_dict()}\n\n"
             f"Context JSON:\n{context.to_prompt_json()}"
         )

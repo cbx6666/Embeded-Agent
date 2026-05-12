@@ -5,13 +5,15 @@ import unittest
 from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
+from src.agent.context.personal_context_builder import PersonalContextBuilder
 from src.agent.core import AgentCore
 from src.services.llm_service import LLMService
-from src.services.memory_service import MemoryService
+from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.services.user_profile_service import DEFAULT_USER_ID, UserProfileService
 from src.storage.json_store import JsonStore
-from src.storage.profile_store import ProfileStore
+from src.storage.long_term_memory_store import LongTermMemoryStore
+from src.storage.user_profile_store import UserProfileStore
 
 
 class StubLLMService(LLMService):
@@ -34,7 +36,7 @@ class UserProfileTestCase(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_default_user_is_created(self) -> None:
-        service = UserProfileService(ProfileStore(self.root / "profiles.json"))
+        service = UserProfileService(UserProfileStore(self.root / "profiles.json"))
 
         user_ids = {profile.info.user_id for profile in service.list_users()}
 
@@ -48,7 +50,7 @@ class UserProfileTestCase(unittest.TestCase):
 
         self.assertEqual(core.state.current_user_id, "alice")
         self.assertIn("Alice", message)
-        self.assertEqual(core.profile_service.get_user("alice").info.display_name, "Alice")
+        self.assertEqual(core.personal_context_builder.user_profile_service.get_user("alice").info.display_name, "Alice")
 
     def test_set_user_preference(self) -> None:
         core = self._make_core()
@@ -57,7 +59,7 @@ class UserProfileTestCase(unittest.TestCase):
         core.set_user_preference("favorite_content_types", "music,podcast", timestamp=1001)
         core.set_user_preference("reminder_style", "gentle", timestamp=1002)
 
-        preference = core.profile_service.get_user("alice").preference
+        preference = core.personal_context_builder.user_profile_service.get_user("alice").preference
         self.assertEqual(preference.favorite_content_types, ["music", "podcast"])
         self.assertEqual(preference.reminder_style, "gentle")
 
@@ -70,7 +72,7 @@ class UserProfileTestCase(unittest.TestCase):
         core.set_user_info("identity", "student", timestamp=1003)
         core.set_user_info("hobbies", "drawing,football", timestamp=1004)
 
-        info = core.profile_service.get_user("alice").info
+        info = core.personal_context_builder.user_profile_service.get_user("alice").info
         self.assertEqual(info.age, 12)
         self.assertEqual(info.gender, "female")
         self.assertEqual(info.identity, "student")
@@ -78,24 +80,24 @@ class UserProfileTestCase(unittest.TestCase):
 
     def test_preferences_persist_after_reload(self) -> None:
         profile_path = self.root / "profiles.json"
-        service = UserProfileService(ProfileStore(profile_path))
+        service = UserProfileService(UserProfileStore(profile_path))
         service.switch_user("alice", display_name="Alice", timestamp=1000)
         service.update_preference("alice", "favorite_music_styles", "lofi,classical", timestamp=1001)
 
-        reloaded = UserProfileService(ProfileStore(profile_path))
+        reloaded = UserProfileService(UserProfileStore(profile_path))
         preference = reloaded.get_user("alice").preference
 
         self.assertEqual(preference.favorite_music_styles, ["lofi", "classical"])
 
     def test_user_info_persists_after_reload(self) -> None:
         profile_path = self.root / "profiles.json"
-        service = UserProfileService(ProfileStore(profile_path))
+        service = UserProfileService(UserProfileStore(profile_path))
         service.switch_user("alice", display_name="Alice", timestamp=1000)
         service.update_info("alice", "age", "12", timestamp=1001)
         service.update_info("alice", "identity", "student", timestamp=1002)
         service.update_info("alice", "hobbies", "drawing,football", timestamp=1003)
 
-        reloaded = UserProfileService(ProfileStore(profile_path))
+        reloaded = UserProfileService(UserProfileStore(profile_path))
         info = reloaded.get_user("alice").info
 
         self.assertEqual(info.age, 12)
@@ -119,7 +121,7 @@ class UserProfileTestCase(unittest.TestCase):
         self.assertIn("favorite_music_styles: lofi", rendered)
 
     def test_preferences_are_isolated_by_user(self) -> None:
-        service = UserProfileService(ProfileStore(self.root / "profiles.json"))
+        service = UserProfileService(UserProfileStore(self.root / "profiles.json"))
         service.switch_user("alice", display_name="Alice", timestamp=1000)
         service.update_preference("alice", "favorite_content_types", "music", timestamp=1001)
         service.switch_user("bob", display_name="Bob", timestamp=1002)
@@ -132,10 +134,13 @@ class UserProfileTestCase(unittest.TestCase):
         return AgentCore(
             output=ConsoleOutput(silent=True),
             timer_service=TimerService(background=False),
-            memory_service=MemoryService(),
+            runtime_history_service=RuntimeHistoryService(),
             llm_service=StubLLMService(),
             store=JsonStore(self.root / "runtime.json"),
-            profile_service=UserProfileService(ProfileStore(self.root / "profiles.json")),
+            personal_context_builder=PersonalContextBuilder(
+                long_term_memory_store=LongTermMemoryStore(self.root / "long_term_memory.json"),
+                user_profile_service=UserProfileService(UserProfileStore(self.root / "profiles.json")),
+            ),
         )
 
 
