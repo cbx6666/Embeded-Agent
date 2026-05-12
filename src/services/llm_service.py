@@ -5,10 +5,10 @@ LLM 服务适配模块。
 
 本文件位于所有 LLM 角色的最底层，负责把角色 prompt 发送给
 OpenAI 风格 Chat Completions 接口，并在离线或失败时提供可解释的本地
-mock 输出。它的上游是 `llm_agent/roles/*` 和 `memory/llm_memory_manager.py`，
+mock 输出。它的上游是 `llm_agent/roles/*` 和 `memory/long_term_memory_pipeline.py`，
 下游是外部 LLM API。
 
-本模块不理解业务流程、不修改 AgentState、不写 MemoryStore，也不生成 Action。
+本模块不理解业务流程、不修改 AgentState、不写 LongTermMemoryStore，也不生成 Action。
 它只返回文本或 JSON 字符串，所有语义约束都必须由上层 schema validator 和
 deterministic boundary 再次校验。
 """
@@ -327,12 +327,12 @@ def _mock_intent_from_prompt(prompt: str) -> dict[str, Any]:
     LLM 完成，输出仍要经过 IntentPlanValidator 和 DeterministicGuard。
     """
 
+    if "timer_finished" in prompt:
+        return {"type": "complete_focus", "priority": 80, "reason": "timer complete", "payload": {}, "requires_llm": False}
     if "focus_start_requested" in prompt:
         return {"type": "start_focus", "priority": 80, "reason": "explicit focus event", "payload": {}, "requires_llm": False}
     if "focus_stop_requested" in prompt:
         return {"type": "stop_focus", "priority": 80, "reason": "explicit stop event", "payload": {}, "requires_llm": False}
-    if "timer_finished" in prompt:
-        return {"type": "complete_focus", "priority": 80, "reason": "timer complete", "payload": {}, "requires_llm": False}
     lowered = prompt.lower()
     if "focus_health_check" in lowered and '"active": true' in lowered and '"fatigue_level": "high"' in lowered:
         return {"type": "suggest_rest", "priority": 60, "reason": "fatigue during focus", "payload": {}, "requires_llm": False}
@@ -356,7 +356,7 @@ def _mock_memory_item(prompt: str) -> dict[str, Any] | None:
     if not _contains_any(lowered, ["prefer", "like", "dislike", "don't", "do not", "remind", "style"]):
         return None
     return {
-        "memory_type": "explicit_preference",
+        "memory_type": "behavior_preference",
         "content": "User expressed a preference in the latest interaction.",
         "confidence": 0.6,
         "evidence": [{"source": "mock_llm", "snippet": "latest interaction"}],

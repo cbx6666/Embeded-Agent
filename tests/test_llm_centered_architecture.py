@@ -6,18 +6,18 @@ import unittest
 from pathlib import Path
 
 from src.agent.decision.action_realizer import ActionRealizer
+from src.agent.decision.agent_context_builder import AgentContextBuilder
 from src.agent.decision.decision_pipeline import DecisionPipeline
 from src.agent.decision.guard import DeterministicGuard
 from src.agent.decision.intent_model import AgentIntent, IntentPlan
 from src.agent.event import Event
-from src.agent.llm_agent.agent_context import AgentContextBuilder
-from src.agent.memory.llm_memory_manager import LLMMemoryManager, MemoryContextBuilder, MemoryValidator
-from src.agent.memory.schemas import MemoryCandidate
-from src.agent.memory.memory_pipeline import MemoryPipeline
-from src.agent.memory.memory_store import MemoryStore
-from src.agent.memory.profile_snapshot_builder import ProfileSnapshotBuilder
+from src.agent.context.personal_context_builder import PersonalContextBuilder
+from src.agent.memory.long_term_memory_pipeline import LongTermMemoryPipeline
+from src.agent.memory.memory_candidate import MemoryCandidate
+from src.agent.memory.memory_validator import MemoryValidator
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
+from src.storage.long_term_memory_store import LongTermMemoryStore
 
 
 class ScriptedLLM(LLMService):
@@ -151,9 +151,9 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
         self.assertEqual({action.type for action in result.actions}, {"display"})
 
     def test_memory_extraction_and_consolidation(self) -> None:
-        store = MemoryStore(self.root / "memory.json")
+        store = LongTermMemoryStore(self.root / "memory.json")
         candidate = {
-            "memory_type": "explicit_preference",
+            "memory_type": "behavior_preference",
             "content": "User prefers fewer rest reminders.",
             "confidence": 0.82,
             "evidence": [{"event": "user_text_input"}],
@@ -166,25 +166,25 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
                 "memory_consolidator": json.dumps({"candidates": [candidate]}),
             }
         )
-        context = MemoryContextBuilder().build(
-            user_id="u1",
-            event=Event(type="user_text_input", timestamp=40, payload={"text": "Please remind me less."}),
-            state=AgentState(current_user_id="u1"),
+        event = Event(type="user_text_input", timestamp=40, payload={"text": "Please remind me less."})
+        result = LongTermMemoryPipeline(store).process_event(
+            "u1",
+            event,
+            AgentState(current_user_id="u1"),
+            llm,
         )
-
-        result = LLMMemoryManager(store).process(context, llm)
 
         self.assertEqual(len(result.stored), 1)
         self.assertEqual(store.list("u1")[0].content, "User prefers fewer rest reminders.")
 
-        result2 = LLMMemoryManager(store).process(context, llm)
+        result2 = LongTermMemoryPipeline(store).process_event("u1", event, AgentState(current_user_id="u1"), llm)
         self.assertEqual(len(store.list("u1")), 1)
         self.assertGreaterEqual(len(result2.stored[0].evidence), 1)
 
     def test_memory_validator_rejects_memory_without_evidence(self) -> None:
         validator = MemoryValidator()
         candidate = MemoryCandidate(
-            memory_type="explicit_preference",
+            memory_type="behavior_preference",
             content="User prefers quiet reminders.",
             confidence=0.8,
             evidence=[],
@@ -192,14 +192,15 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
 
         self.assertEqual(validator.validate(candidate), "memory evidence is required")
 
-    def test_profile_snapshot_and_context_retrieval(self) -> None:
-        store = MemoryStore(self.root / "memory.json")
+    def test_personal_context_and_context_retrieval(self) -> None:
+        store = LongTermMemoryStore(self.root / "memory.json")
         store.upsert_candidate(
             "u1",
             MemoryCandidate(
-                memory_type="explicit_preference",
+                memory_type="behavior_preference",
                 content="User prefers quiet visual feedback.",
                 confidence=0.9,
+                evidence=[{"event": "user_text_input"}],
             ),
             timestamp=50,
         )
@@ -209,19 +210,20 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
                 memory_type="interaction_style",
                 content="Use concise responses during focus.",
                 confidence=0.8,
+                evidence=[{"event": "user_text_input"}],
             ),
             timestamp=51,
         )
         state = AgentState(current_user_id="u1")
-        snapshot = ProfileSnapshotBuilder(store).build(user_id="u1", state=state)
+        personal_context = PersonalContextBuilder(long_term_memory_store=store).build(user_id="u1", state=state)
         context = AgentContextBuilder().build(
             previous_state=AgentState(current_user_id="u1"),
             current_state=state,
             event=Event(type="user_text_input", timestamp=52, payload={"text": "quiet please"}),
-            profile_snapshot=snapshot,
+            personal_context=personal_context,
         )
 
-        self.assertEqual(len(snapshot.explicit_preferences), 1)
+        self.assertEqual(len(personal_context.behavior_preferences), 1)
         self.assertTrue(any("quiet" in item["content"] for item in context.relevant_memories))
 
     def test_llm_fallback(self) -> None:
@@ -251,7 +253,7 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
             previous_state=AgentState(),
             current_state=state,
             event=Event(type="system_triggered", timestamp=70, payload={"trigger": "focus_health_check"}),
-            profile_snapshot=None,
+            personal_context=None,
         )
 
         decision = DeterministicGuard().filter(
@@ -267,7 +269,7 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
             previous_state=AgentState(),
             current_state=AgentState(),
             event=Event(type="focus_start_requested", timestamp=80, payload={"duration_sec": 600}),
-            profile_snapshot=None,
+            personal_context=None,
         )
         actions = ActionRealizer().realize(
             IntentPlan(
@@ -284,17 +286,25 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
         self.assertEqual(actions[0].payload["duration_sec"], 600)
         self.assertIn("set_tts_volume", {action.type for action in actions})
 
-    def test_memory_pipeline_builds_profile_snapshot(self) -> None:
-        pipeline = MemoryPipeline(MemoryStore(self.root / "memory.json"))
-        pipeline.store.upsert_candidate(
+    def test_personal_context_builder_reads_long_term_memory(self) -> None:
+        store = LongTermMemoryStore(self.root / "memory.json")
+        store.upsert_candidate(
             "u1",
-            MemoryCandidate(memory_type="active_constraint", content="Do not speak during silent mode.", confidence=0.9),
+            MemoryCandidate(
+                memory_type="active_constraint",
+                content="Do not speak during silent mode.",
+                confidence=0.9,
+                evidence=[{"event": "user_text_input"}],
+            ),
             timestamp=90,
         )
 
-        snapshot = pipeline.build_profile_snapshot("u1", AgentState(current_user_id="u1"))
+        personal_context = PersonalContextBuilder(long_term_memory_store=store).build(
+            user_id="u1",
+            state=AgentState(current_user_id="u1"),
+        )
 
-        self.assertEqual(snapshot.active_constraints[0]["content"], "Do not speak during silent mode.")
+        self.assertEqual(personal_context.active_constraints[0]["content"], "Do not speak during silent mode.")
 
 
 def _json(**values: object) -> str:

@@ -39,9 +39,9 @@ class ReducerTestCase(unittest.TestCase):
         reduce_state(state, Event(type="focus_stop_requested", timestamp=220, payload={}))
         self.assertFalse(state.focus.active)
         self.assertEqual(state.interaction.mode, "normal")
-        self.assertEqual(state.memory.focus_session_count, 1)
-        self.assertEqual(state.memory.focus_sessions[-1]["actual_duration_sec"], 120)
-        self.assertEqual(state.memory.focus_sessions[-1]["reason"], "manual_stop")
+        self.assertEqual(state.runtime_history.focus_session_count, 1)
+        self.assertEqual(state.runtime_history.focus_sessions[-1]["actual_duration_sec"], 120)
+        self.assertEqual(state.runtime_history.focus_sessions[-1]["reason"], "manual_stop")
 
     def test_timer_ticked_updates_elapsed_and_remaining(self) -> None:
         """timer tick 只更新专注计时字段。"""
@@ -62,7 +62,7 @@ class ReducerTestCase(unittest.TestCase):
 
         self.assertFalse(state.focus.active)
         self.assertEqual(state.focus.last_focus_end_ts, 60)
-        self.assertEqual(state.memory.focus_sessions[-1]["reason"], "timer_complete")
+        self.assertEqual(state.runtime_history.focus_sessions[-1]["reason"], "timer_complete")
 
     def test_user_state_events_update_fields_and_confidence(self) -> None:
         """用户感知事件更新对应用户状态块。"""

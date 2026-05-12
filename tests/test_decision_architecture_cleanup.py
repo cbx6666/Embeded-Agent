@@ -43,6 +43,8 @@ def test_decision_package_exports_llm_centered_entrypoints() -> None:
 def test_core_uses_new_orchestrated_pipeline() -> None:
     source = (ROOT / "src" / "agent" / "core.py").read_text(encoding="utf-8")
     assert "DecisionPipeline" in source
-    assert "MemoryPipeline" in source
+    assert "LongTermMemoryPipeline" in source
+    assert "PersonalContextBuilder" in source
+    assert "RuntimeHistoryService" in source
     assert "LLMAgentOrchestrator" not in source
     assert "DecisionPipeline" in source

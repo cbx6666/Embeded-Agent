@@ -9,7 +9,7 @@ from src.agent.state.cooldown_state import CooldownState
 from src.agent.state.environment_state import EnvironmentState
 from src.agent.state.focus_state import FocusState
 from src.agent.state.interaction_state import InteractionState
-from src.agent.state.memory_state import MemoryState
+from src.agent.history.runtime_history import RuntimeHistory
 from src.agent.state.types import (
     DialogueState,
     LightState,
@@ -21,11 +21,10 @@ from src.agent.state.types import (
     UserPresence,
 )
 from src.agent.state.user_state import UserState
-from src.agent.state.user_profile_state import (
+from src.agent.profile.user_profile import (
     UserInfo,
     UserPreference,
     UserProfile,
-    UserProfileInsight,
 )
 
 __all__ = [
@@ -36,7 +35,7 @@ __all__ = [
     "FocusState",
     "InteractionState",
     "LightState",
-    "MemoryState",
+    "RuntimeHistory",
     "Mode",
     "UserAttention",
     "UserBehavior",
@@ -46,6 +45,5 @@ __all__ = [
     "UserPresence",
     "UserPreference",
     "UserProfile",
-    "UserProfileInsight",
     "UserState",
 ]

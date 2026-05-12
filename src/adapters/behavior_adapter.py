@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from src.agent.event.factories import (
+from src.agent.event.event_builders import (
     make_behavior_attention_event,
     make_behavior_presence_event,
 )

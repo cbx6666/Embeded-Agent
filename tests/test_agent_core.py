@@ -8,7 +8,7 @@ from src.adapters.console_output import ConsoleOutput
 from src.agent.core import AgentCore
 from src.agent.event import Event
 from src.services.llm_service import LLMService
-from src.services.memory_service import MemoryService
+from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.storage.json_store import JsonStore
 
@@ -33,7 +33,7 @@ class AgentCoreTestCase(unittest.TestCase):
         self.core = AgentCore(
             output=ConsoleOutput(silent=True),
             timer_service=TimerService(background=False),
-            memory_service=MemoryService(),
+            runtime_history_service=RuntimeHistoryService(),
             llm_service=self.llm,
             store=JsonStore(self.root / "runtime_store.json"),
         )
@@ -62,7 +62,7 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertIn("safety_critic", self.llm.calls)
         self.assertIn("response_writer", self.llm.calls)
         self.assertIn("speak", {action.type for action in actions})
-        self.assertTrue(any(message["role"] == "user" for message in self.core.state.memory.recent_messages))
+        self.assertTrue(any(message["role"] == "user" for message in self.core.state.runtime_history.recent_messages))
 
     def test_timer_finished_generates_completion_feedback(self) -> None:
         self.core.handle_event(

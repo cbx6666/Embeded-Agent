@@ -13,7 +13,7 @@ SituationFrame、IntentPlan 和 AgentContext，下游输出是 ResponseDraft。
 from pathlib import Path
 
 from src.agent.decision.intent_model import IntentPlan
-from src.agent.llm_agent.agent_context import AgentContext
+from src.agent.decision.agent_context_builder import AgentContext
 from src.agent.llm_agent.schemas import ResponseDraft, SituationFrame, parse_json_object
 from src.services.llm_service import LLMService
 

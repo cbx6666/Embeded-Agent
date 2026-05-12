@@ -1,6 +1,6 @@
 """ResNet18 + RAF-DB 七类权重：从人脸 crop 预测 label_id（1–7），封装为 `EmotionPredictResult`。
 
-见 `src/agent/event/factories.py` 中 `RAF_DB_LABELS` 与闭集映射。
+见 `src/agent/event/event_builders.py` 中 `RAF_DB_LABELS` 与闭集映射。
 
 未安装 torch 或未提供权重时 `available()` 为 False。
 """

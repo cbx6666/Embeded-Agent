@@ -11,17 +11,6 @@ Intent 到 Action 的确定性落地模块。
 
 from __future__ import annotations
 
-"""
-Intent 到 Action 的确定性落地模块。
-
-本模块位于 DeterministicGuard 之后、DeviceAdapter 之前，负责把已通过边界
-过滤的 IntentPlan 转换为系统注册 Action。上游输入是 IntentPlan、ResponseDraft
-和 AgentContext，下游输出是 Action 列表。
-
-本模块不调用 LLM、不理解用户自然语言、不修改 AgentState，也不直接执行硬件。
-它只做可审计的参数裁剪和动作构造。
-"""
-
 from src.agent.action import (
     Action,
     display,
@@ -34,7 +23,7 @@ from src.agent.action import (
     stop_voice_capture,
 )
 from src.agent.decision.intent_model import AgentIntent, IntentPlan
-from src.agent.llm_agent.agent_context import AgentContext
+from src.agent.decision.agent_context_builder import AgentContext
 from src.agent.llm_agent.schemas import ResponseDraft
 
 

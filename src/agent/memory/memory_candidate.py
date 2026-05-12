@@ -1,38 +1,38 @@
 from __future__ import annotations
 
-"""
-LLM 记忆数据结构模块。
+"""长期记忆候选模型。
 
-本文件定义 LLM-managed Memory 链路中跨角色传递的结构化数据。上游是
-`LLMMemoryManager` 中的 MemoryExtractor/MemoryCritic/MemoryConsolidator，
-下游是 `MemoryStore` 和 `ProfileSnapshotBuilder`。
+它是什么：
+MemoryCandidate 是 LLM 或确定性提取器提出的“可能值得沉淀为长期记忆”的候选。
 
-本模块不调用 LLM、不写入磁盘、不修改用户画像，也不参与行为决策。它只负责
-把模型输出收敛为可验证的 Python 对象，为后续确定性校验提供边界。
+它不是什么：
+它不是已经写入的 LongTermMemory，也不是 UserProfile。候选必须经过 critic、
+consolidator 和 MemoryValidator 后才允许进入 LongTermMemoryStore。
+
+为什么存在：
+LLM 可以参与观察和提取，但不能直接写 store。候选对象就是 LLM 输出与确定性写入边界
+之间的缓冲层。
+
+边界：
+MemoryCandidate 只允许描述来自 event、dialogue、action outcome 或 repeated behaviors
+的可证据化内容；显式 profile 字段不应在这里重复保存。
 """
 
 from dataclasses import dataclass, field
 from typing import Any
 
 
-ALLOWED_MEMORY_TYPES = {
-    "explicit_preference",
+ALLOWED_LONG_TERM_MEMORY_TYPES = {
+    "behavior_preference",
     "behavior_pattern",
     "interaction_style",
     "active_constraint",
-    "recent_context",
     "uncertain",
 }
 
-
 @dataclass
 class MemoryCandidate:
-    """LLM 提出的候选记忆。
-
-    输入来自 MemoryExtractor 或 MemoryConsolidator 的 JSON 输出，输出给
-    MemoryValidator/MemoryStore。它不代表已经写入长期记忆，只有通过确定性
-    校验后才可以进入 store。
-    """
+    """尚未写入长期记忆仓库的候选记忆。"""
 
     memory_type: str
     content: str
@@ -43,11 +43,10 @@ class MemoryCandidate:
 
     @classmethod
     def from_dict(cls, data: object) -> "MemoryCandidate":
-        """从 LLM JSON 恢复候选记忆，并拒绝明显畸形的字段结构。
+        """从 LLM JSON 恢复候选。
 
-        这里不判断业务是否值得记忆；价值判断由 LLM 角色完成，安全写入由
-        MemoryValidator 完成。解析失败会抛出 ValueError，让上层进入可解释
-        fallback。
+        这里不做旧类型兼容转换；不属于长期记忆语义边界的类型会交给
+        MemoryValidator 拒绝，避免旧概念继续污染 LongTermMemory。
         """
 
         if not isinstance(data, dict):
@@ -72,7 +71,7 @@ class MemoryCandidate:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """转成可持久化字典，供 prompt、trace 和 store 复用。"""
+        """转换为可用于 prompt、trace 和 store 的稳定字典。"""
 
         return {
             "memory_type": self.memory_type,
@@ -85,8 +84,6 @@ class MemoryCandidate:
 
 
 def _clamp(value: object) -> float:
-    """把 LLM 给出的置信度裁剪到 0 到 1，避免畸形输出污染后续排序。"""
-
     try:
         number = float(value)
     except (TypeError, ValueError):

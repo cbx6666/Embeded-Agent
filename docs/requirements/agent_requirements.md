@@ -1,4 +1,4 @@
-# 嵌入式智能陪伴 Agent 需求文档
+﻿# 嵌入式智能陪伴 Agent 需求文档
 
 版本：V1  
 阶段：总体需求定义
@@ -351,7 +351,7 @@
 
 ### 12.3 决策机制
 
-系统应通过唯一主链路 `Event -> Reducer -> MemoryPipeline -> DecisionPipeline -> Action[]` 完成当前决策。`Reducer` 只做状态归约，`MemoryPipeline` 负责长期学习用户，`DecisionPipeline` 负责本轮候选生成、规划、安全过滤、冲突仲裁和动作落地。
+系统应通过唯一主链路 `Event -> RuntimeHistory -> LongTermMemoryPipeline -> PersonalContextBuilder -> DecisionPipeline -> Action[]` 完成当前决策。`Reducer` 只做状态归约，`LongTermMemoryPipeline` 负责长期学习用户，`PersonalContextBuilder` 负责生成决策上下文，`DecisionPipeline` 负责本轮候选生成、规划、安全过滤、冲突仲裁和动作落地。
 
 系统应采用 Policy-driven 架构：Python 负责 Engine，YAML 负责 Policy，LLM 负责 Reasoning，Memory 负责 Personalization。稳定业务阈值、优先级、冷却时间、冲突关系、提醒文案、LLM 使用策略和长期记忆阈值应通过 YAML 配置管理。
 
@@ -449,10 +449,11 @@ LLM 可以参与复杂文本理解、候选意图排序、参数补全和回复�
 ```text
 感知
 -> Reducer 状态归约
--> MemoryPipeline 长期学习
+-> LongTermMemoryPipeline 长期学习
 -> DecisionPipeline 当前决策
 -> 多模态反馈
 -> 数据记录与统计
 ```
 
 当前阶段的工作重点应放在软件核心与整体架构打底，在此基础上逐步接入视觉、语音、环境传感器与显示控制，实现完整嵌入式智能陪伴终端。
+

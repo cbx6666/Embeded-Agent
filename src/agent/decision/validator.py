@@ -10,21 +10,9 @@ intent、LLM 夹带 action/state_patch 等越界输出，防止 prompt 注入绕
 """
 
 from __future__ import annotations
-
-"""
-IntentPlan 校验模块。
-
-本模块位于 LLM Agent 输出之后、DeterministicGuard 之前，负责验证模型生成的
-IntentPlan 是否符合系统白名单和结构边界。上游输入是 IntentPlanner 或
-SafetyCritic 产生的 IntentPlan，下游输出是 IntentPlanValidation。
-
-本模块不判断用户语义、不生成 Action、不修改 AgentState。这里拒绝未注册
-intent、LLM 夹带 action/state_patch 等越界输出，防止 prompt 注入绕过设备边界。
-"""
-
 from dataclasses import dataclass, field
 
-from src.agent.decision.intent_model import IntentPlan, REGISTERED_INTENT_TYPE_SET
+from src.agent.decision.intent_model import IntentPlan, REGISTERED_INTENT_TYPES
 
 
 @dataclass
@@ -59,7 +47,7 @@ class IntentPlanValidator:
 
         errors: list[str] = []
         for index, intent in enumerate(plan.intents):
-            if intent.type not in REGISTERED_INTENT_TYPE_SET:
+            if intent.type not in REGISTERED_INTENT_TYPES:
                 errors.append(f"intent[{index}] has unregistered type: {intent.type}")
             if not isinstance(intent.payload, dict):
                 errors.append(f"intent[{index}] payload must be an object")
