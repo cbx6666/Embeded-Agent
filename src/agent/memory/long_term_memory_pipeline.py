@@ -203,10 +203,13 @@ class LongTermMemoryPipeline:
     def _observe(self, context: LongTermMemoryContext, llm_service: LLMService) -> dict[str, Any]:
         prompt = f"{read_prompt(self.observer_prompt_path)}\n\nMemoryContext JSON:\n{context.to_prompt()}"
         try:
-            data = json.loads(llm_service.complete_json("memory_observer", prompt))
-            return data if isinstance(data, dict) else {"worth_remembering": False}
+            raw = llm_service.complete_json("memory_observer", prompt)
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                return {"worth_remembering": False, "prompt": prompt, "raw": raw, "fallback": False}
+            return {**data, "prompt": prompt, "raw": raw, "fallback": False}
         except Exception as exc:
-            return {"worth_remembering": False, "fallback": True, "error": str(exc)}
+            return {"worth_remembering": False, "prompt": prompt, "fallback": True, "error": str(exc)}
 
     def _extract(
         self,
@@ -215,12 +218,13 @@ class LongTermMemoryPipeline:
     ) -> tuple[list[MemoryCandidate], dict[str, Any]]:
         prompt = f"{read_prompt(self.extractor_prompt_path)}\n\nMemoryContext JSON:\n{context.to_prompt()}"
         try:
-            data = json.loads(llm_service.complete_json("memory_extractor", prompt))
+            raw_output = llm_service.complete_json("memory_extractor", prompt)
+            data = json.loads(raw_output)
             raw = data.get("candidates", []) if isinstance(data, dict) else []
             candidates = [MemoryCandidate.from_dict(item) for item in raw]
-            return candidates, {"fallback": False, "count": len(candidates)}
+            return candidates, {"prompt": prompt, "raw": raw_output, "fallback": False, "count": len(candidates)}
         except Exception as exc:
-            return [], {"fallback": True, "error": str(exc)}
+            return [], {"prompt": prompt, "fallback": True, "error": str(exc)}
 
     def _critic(
         self,
@@ -234,7 +238,8 @@ class LongTermMemoryPipeline:
             f"Candidates JSON:\n{json.dumps([candidate.to_dict() for candidate in candidates], ensure_ascii=False)}"
         )
         try:
-            data = json.loads(llm_service.complete_json("memory_critic", prompt))
+            raw_output = llm_service.complete_json("memory_critic", prompt)
+            data = json.loads(raw_output)
             indexes = data.get("approved_indexes", []) if isinstance(data, dict) else []
             approved = [
                 candidates[int(index)]
@@ -243,9 +248,9 @@ class LongTermMemoryPipeline:
                 if 0 <= int(index) < len(candidates)
             ]
             rejected = data.get("rejected_reasons", []) if isinstance(data, dict) else []
-            return approved, [str(item) for item in rejected], {"fallback": False}
+            return approved, [str(item) for item in rejected], {"prompt": prompt, "raw": raw_output, "fallback": False}
         except Exception as exc:
-            return candidates, [], {"fallback": True, "error": str(exc)}
+            return candidates, [], {"prompt": prompt, "fallback": True, "error": str(exc)}
 
 
 

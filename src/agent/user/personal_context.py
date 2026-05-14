@@ -19,6 +19,7 @@ PersonalContext 由 PersonalContextBuilder 构建后不可变使用；业务层�
 LongTermMemoryStore 或 UserProfileStore。
 """
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -70,15 +71,7 @@ class PersonalContext:
         LongTermMemory 按有效置信度和事件类型排序，RuntimeHistory 只提供短期窗口。
         """
 
-        pool = (
-            list(self.profile_items)
-            + list(self.active_constraints)
-            + list(self.behavior_preferences)
-            + list(self.interaction_style)
-            + list(self.behavior_patterns)
-            + list(self.runtime_items)
-            + list(self.uncertain_memories)
-        )
+        pool = _retrieval_pool(self)
         terms = _terms(text)
         scored: list[tuple[float, int, dict[str, Any]]] = []
         for index, item in enumerate(pool):
@@ -97,6 +90,80 @@ class PersonalContext:
         scored.sort(key=lambda pair: (-pair[0], pair[1]))
         return [item for score, _, item in scored[: max(0, limit)] if score > -100]
 
+    def retrieve_relevant_with_scores(
+        self,
+        *,
+        event_type: str,
+        text: str = "",
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
+        """Return retrieval results with deterministic score explanations.
+
+        The default `retrieve_relevant` method intentionally keeps returning the
+        original item dictionaries. This method is for debug/experiments and
+        returns deep-copied items with `score_breakdown`, `retrieval_rank`, and
+        `original_index` added.
+        """
+
+        pool = _retrieval_pool(self)
+        terms = _terms(text)
+        scored: list[tuple[float, int, dict[str, Any], dict[str, float]]] = []
+        for index, item in enumerate(pool):
+            breakdown = _score_breakdown(
+                item,
+                event_type=event_type,
+                terms=terms,
+                policy=DEFAULT_RETRIEVAL_POLICY,
+            )
+            scored.append((breakdown["final_score"], index, item, breakdown))
+
+        scored.sort(key=lambda pair: (-pair[0], pair[1]))
+        explained: list[dict[str, Any]] = []
+        for rank, (score, index, item, breakdown) in enumerate(scored[: max(0, limit)], start=1):
+            if score <= -100:
+                continue
+            rendered = copy.deepcopy(item)
+            rendered["score_breakdown"] = dict(breakdown)
+            rendered["retrieval_rank"] = rank
+            rendered["original_index"] = index
+            explained.append(rendered)
+        return explained
+
+    def explain_retrieval(
+        self,
+        *,
+        event_type: str,
+        text: str = "",
+        limit: int = 8,
+    ) -> dict[str, Any]:
+        """Return a compact retrieval explanation payload for CLI and experiments."""
+
+        pool = _retrieval_pool(self)
+        results = self.retrieve_relevant_with_scores(event_type=event_type, text=text, limit=limit)
+        return {
+            "query": {
+                "event_type": event_type,
+                "text": text,
+                "terms": sorted(_terms(text)),
+                "limit": limit,
+            },
+            "candidate_count": len(pool),
+            "returned_count": len(results),
+            "results": results,
+        }
+
+
+def _retrieval_pool(context: PersonalContext) -> list[dict[str, Any]]:
+    return (
+        list(context.profile_items)
+        + list(context.active_constraints)
+        + list(context.behavior_preferences)
+        + list(context.interaction_style)
+        + list(context.behavior_patterns)
+        + list(context.runtime_items)
+        + list(context.uncertain_memories)
+    )
+
 
 def _terms(text: str) -> set[str]:
     return {part.lower() for part in text.replace(",", " ").split() if len(part) > 1}
@@ -111,22 +178,61 @@ def _relevance_score(
 ) -> float:
     """Execute the configured retrieval policy for one candidate item."""
 
+    return _score_breakdown(item, event_type=event_type, terms=terms, policy=policy)["final_score"]
+
+
+def _score_breakdown(
+    item: dict[str, Any],
+    *,
+    event_type: str,
+    terms: set[str],
+    policy: RetrievalPolicyConfig,
+) -> dict[str, float]:
+    """Explain the same hand-weighted score used by `retrieve_relevant`."""
+
     source = str(item.get("source", ""))
     item_type = str(item.get("memory_type") or item.get("item_type") or "")
     content = str(item.get("content", "")).lower()
-    score = _source_weight(source, policy) + _event_type_weight(event_type, item_type, policy)
-    score += float(item.get("priority_score", 0.0))
-    score += float(item.get("effective_confidence", item.get("confidence", 0.0))) * policy.confidence_weight
-    evidence_bonus = int(item.get("evidence_count", 0)) * policy.evidence_weight
-    score += min(policy.max_evidence_bonus, evidence_bonus)
+    source_weight = _source_weight(source, policy)
+    event_type_weight = _event_type_weight(event_type, item_type, policy)
+    priority_score = float(item.get("priority_score", 0.0))
+    confidence_bonus = (
+        float(item.get("effective_confidence", item.get("confidence", 0.0))) * policy.confidence_weight
+    )
+    raw_evidence_bonus = int(item.get("evidence_count", 0)) * policy.evidence_weight
+    evidence_bonus = min(policy.max_evidence_bonus, raw_evidence_bonus)
+    conflict_penalty = 0.0
     if item.get("conflict_with") and source != _most_authoritative_source(policy):
-        score -= policy.conflict_penalty
+        conflict_penalty = -float(policy.conflict_penalty)
+    content_term_bonus = 0.0
+    tag_term_bonus = 0.0
     if terms:
-        score += sum(policy.content_term_weight for term in terms if term in content)
+        content_term_bonus = float(sum(policy.content_term_weight for term in terms if term in content))
         tags = item.get("tags", [])
         if isinstance(tags, list):
-            score += sum(policy.tag_term_weight for term in terms if term in {str(tag).lower() for tag in tags})
-    return score
+            tag_terms = {str(tag).lower() for tag in tags}
+            tag_term_bonus = float(sum(policy.tag_term_weight for term in terms if term in tag_terms))
+    final_score = (
+        source_weight
+        + event_type_weight
+        + priority_score
+        + confidence_bonus
+        + evidence_bonus
+        + conflict_penalty
+        + content_term_bonus
+        + tag_term_bonus
+    )
+    return {
+        "source_weight": source_weight,
+        "event_type_weight": event_type_weight,
+        "priority_score": priority_score,
+        "confidence_bonus": confidence_bonus,
+        "evidence_bonus": evidence_bonus,
+        "conflict_penalty": conflict_penalty,
+        "content_term_bonus": content_term_bonus,
+        "tag_term_bonus": tag_term_bonus,
+        "final_score": final_score,
+    }
 
 
 def _source_weight(source: str, policy: RetrievalPolicyConfig) -> float:

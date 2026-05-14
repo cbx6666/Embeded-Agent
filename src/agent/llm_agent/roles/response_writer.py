@@ -61,11 +61,12 @@ class ResponseWriter:
             draft = ResponseDraft.from_dict(parse_json_object(raw))
             if not draft.speak_text and not draft.display_text:
                 raise ValueError("response is empty")
-            return draft, {"raw": raw, "fallback": False}
+            return draft, {"prompt": prompt, "raw": raw, "fallback": False}
         except Exception as exc:
             fallback = llm_service.generate_reply(context.user_text or situation.summary, None)
             draft = ResponseDraft(speak_text=fallback, display_text=fallback)
             return draft, {
+                "prompt": prompt,
                 "fallback": True,
                 "error": str(exc),
             }

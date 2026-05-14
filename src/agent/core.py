@@ -43,9 +43,11 @@ from src.agent.decision.guard import DeterministicGuard
 from src.agent.decision.intent_model import AgentIntent
 from src.agent.event import Event
 from src.agent.memory.long_term_memory_pipeline import LongTermMemoryPipeline
+from src.agent.memory.long_term_memory_pipeline import LongTermMemoryRunResult
 from src.agent.reducer import reduce_state
 from src.agent.execution.action_result import ActionResult
 from src.agent.execution.device_adapter import DeviceAdapter
+from src.agent.execution.trace import RuntimeTrace
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 from src.services.runtime_history_service import RuntimeHistoryService
@@ -102,6 +104,7 @@ class AgentCore:
         self.last_effective_decision_result: DecisionResult | None = None
         self.last_action_results: list[ActionResult] = []
         self.last_effective_action_results: list[ActionResult] = []
+        self.last_runtime_trace: RuntimeTrace | None = None
         self._lock = threading.RLock()
 
     def handle_event(self, event: Event) -> tuple[list[Action], list[ActionResult]]:
@@ -109,7 +112,16 @@ class AgentCore:
 
         with self._lock:
             previous_state = AgentState.from_dict(self.state.to_dict())
+            trace = RuntimeTrace()
+            trace.add("event", "received", event=_event_to_dict(event))
+
             self.state = reduce_state(self.state, event)
+            trace.add(
+                "reducer",
+                "state_reduced",
+                previous_state=_trace_state_summary(previous_state),
+                current_state=_trace_state_summary(self.state),
+            )
 
             if _should_touch_profile(event):
                 self._profile_service().touch_user(self.state.current_user_id, timestamp=event.timestamp)
@@ -117,11 +129,16 @@ class AgentCore:
             self.runtime_history_service.record_event(self.state, event)
             self._record_user_message_if_needed(event)
 
-            self.long_term_memory_pipeline.process_event(
+            memory_event_result = self.long_term_memory_pipeline.process_event(
                 self.state.current_user_id,
                 event,
                 self.state,
                 self.llm_service,
+            )
+            trace.add(
+                "memory_pipeline",
+                "event_processed",
+                result=_memory_result_to_dict(memory_event_result),
             )
 
             personal_context = self.personal_context_builder.build(
@@ -129,6 +146,7 @@ class AgentCore:
                 state=self.state,
                 event=event,
             )
+            trace.add("personal_context", "built", personal_context=personal_context.to_dict())
 
             decision_result = self.decision_pipeline.decide(
                 previous_state=previous_state,
@@ -137,10 +155,16 @@ class AgentCore:
                 llm_service=self.llm_service,
                 personal_context=personal_context,
             )
+            trace.extend(decision_result.stage_metadata.get("trace"))
             actions = decision_result.actions
             results = self._execute_actions(actions, event.timestamp, source_event=event)
+            trace.add(
+                "action_result",
+                "executed",
+                results=[_action_result_to_dict(result) for result in results],
+            )
 
-            self.long_term_memory_pipeline.process_actions(
+            memory_action_result = self.long_term_memory_pipeline.process_actions(
                 self.state.current_user_id,
                 actions,
                 event.timestamp,
@@ -149,6 +173,12 @@ class AgentCore:
                 state=self.state,
                 llm_service=self.llm_service,
             )
+            if memory_action_result is not None:
+                trace.add(
+                    "memory_pipeline",
+                    "action_processed",
+                    result=_memory_result_to_dict(memory_action_result),
+                )
 
             self.last_intents = decision_result.intents
             self.last_decision_result = decision_result
@@ -159,6 +189,7 @@ class AgentCore:
 
             self.runtime_history_service.trim(self.state)
             self.store.save_state(self.state)
+            self.last_runtime_trace = trace
             return actions, results
 
     def render_state(self) -> str:
@@ -404,4 +435,60 @@ def _should_touch_profile(event: Event) -> bool:
         "user_attention_updated",
         "user_emotion_updated",
         "user_fatigue_updated",
+    }
+
+
+def _event_to_dict(event: Event) -> dict[str, object]:
+    return {
+        "type": event.type,
+        "timestamp": event.timestamp,
+        "payload": dict(event.payload),
+    }
+
+
+def _trace_state_summary(state: AgentState) -> dict[str, object]:
+    return {
+        "current_user_id": state.current_user_id,
+        "interaction": {
+            "mode": state.interaction.mode,
+            "dialogue_state": state.interaction.dialogue_state,
+            "in_conversation": state.interaction.in_conversation,
+        },
+        "focus": {
+            "active": state.focus.active,
+            "elapsed_sec": state.focus.elapsed_sec,
+            "remaining_sec": state.focus.remaining_sec,
+            "target_duration_sec": state.focus.target_duration_sec,
+        },
+        "user": {
+            "presence": state.user.presence,
+            "attention": state.user.attention,
+            "emotion": state.user.emotion,
+            "fatigue_level": state.user.fatigue_level,
+        },
+        "history_counts": {
+            "recent_events": len(state.runtime_history.recent_events),
+            "recent_messages": len(state.runtime_history.recent_messages),
+            "recent_actions": len(state.runtime_history.recent_actions),
+        },
+        "cooldowns": dict(state.cooldown.reminder_last_ts),
+    }
+
+
+def _memory_result_to_dict(result: LongTermMemoryRunResult) -> dict[str, object]:
+    return {
+        "candidates": [candidate.to_dict() for candidate in result.candidates],
+        "stored": [memory.to_dict() for memory in result.stored],
+        "rejected": list(result.rejected),
+        "stage_metadata": dict(result.stage_metadata),
+    }
+
+
+def _action_result_to_dict(result: ActionResult) -> dict[str, object]:
+    return {
+        "action_type": result.action_type,
+        "success": result.success,
+        "timestamp": result.timestamp,
+        "reason": result.reason,
+        "payload": dict(result.payload),
     }

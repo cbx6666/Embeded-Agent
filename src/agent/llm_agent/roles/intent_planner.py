@@ -55,7 +55,7 @@ class IntentPlanner:
         try:
             raw = llm_service.complete_json(self.role_name, prompt)
             plan = IntentPlan.from_dict(parse_json_object(raw))
-            return plan, {"raw": raw, "fallback": False}
+            return plan, {"prompt": prompt, "raw": raw, "fallback": False}
         except Exception as exc:
             plan = fallback_plan_for_event(context.event_type, context.user_text)
-            return plan, {"fallback": True, "error": str(exc)}
+            return plan, {"prompt": prompt, "fallback": True, "error": str(exc)}

@@ -59,9 +59,10 @@ class MemoryConsolidator:
             )
         )
         try:
-            data = json.loads(llm_service.complete_json("memory_consolidator", prompt))
+            raw_output = llm_service.complete_json("memory_consolidator", prompt)
+            data = json.loads(raw_output)
             raw = data.get("candidates", []) if isinstance(data, dict) else []
             consolidated = [MemoryCandidate.from_dict(item) for item in raw]
-            return consolidated, {"fallback": False, "count": len(consolidated)}
+            return consolidated, {"prompt": prompt, "raw": raw_output, "fallback": False, "count": len(consolidated)}
         except Exception as exc:
-            return candidates, {"fallback": True, "error": str(exc)}
+            return candidates, {"prompt": prompt, "fallback": True, "error": str(exc)}

@@ -39,7 +39,7 @@ class SituationAnalyst:
             frame = SituationFrame.from_dict(parse_json_object(raw))
             if not frame.summary:
                 raise ValueError("situation summary is empty")
-            return frame, {"raw": raw, "fallback": False}
+            return frame, {"prompt": prompt, "raw": raw, "fallback": False}
         except Exception as exc:
             frame = fallback_situation(context.event_type, context.user_text)
-            return frame, {"fallback": True, "error": str(exc)}
+            return frame, {"prompt": prompt, "fallback": True, "error": str(exc)}
