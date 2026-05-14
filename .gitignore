@@ -22,6 +22,8 @@ ENV/
 .coverage
 .coverage.*
 htmlcov/
+scripts/runtime_experiments/output/
+scripts/debug/output/
 
 # Type checker and linter cache
 .mypy_cache/

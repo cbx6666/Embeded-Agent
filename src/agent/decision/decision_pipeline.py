@@ -29,6 +29,7 @@ from src.agent.decision.guard import DeterministicGuard
 from src.agent.decision.intent_model import no_op_plan
 from src.agent.decision.validator import IntentPlanValidator
 from src.agent.event import Event
+from src.agent.execution.trace import RuntimeTrace
 from src.agent.llm_agent import LLMAgentOrchestrator
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
@@ -74,25 +75,66 @@ class DecisionPipeline:
             event=event,
             personal_context=personal_context,
         )
+        trace = RuntimeTrace()
+        trace.add("agent_context", "built", context=context.to_prompt_dict())
         ignored_reason = self._ignored_system_trigger_reason(event)
         if ignored_reason:
-            result = _ignored_decision_result(context, ignored_reason)
+            trace.add(
+                "validator",
+                "skipped",
+                ok=True,
+                errors=[],
+                reason="decision policy ignored the event before LLM planning",
+            )
+            trace.add("guard", "skipped", findings=[])
+            trace.add("action_realizer", "realized", action_count=0)
+            trace.add("action", "planned", actions=[])
+            result = _ignored_decision_result(context, ignored_reason, trace=trace)
             self.last_result = result
             return result
 
         agent_run = self.orchestrator.decide(context, llm_service)
+        for role_name, meta in agent_run.stage_metadata.items():
+            if not isinstance(meta, dict):
+                continue
+            if "prompt" in meta:
+                trace.add("prompt", str(role_name), prompt=meta.get("prompt"))
+            trace.add(
+                "llm_output",
+                str(role_name),
+                raw=meta.get("raw"),
+                fallback=bool(meta.get("fallback", False)),
+                error=meta.get("error"),
+                skipped=bool(meta.get("skipped", False)),
+            )
         validation = self.validator.validate(agent_run.plan)
         validation_errors = list(validation.errors)
+        trace.add(
+            "validator",
+            "intent_plan",
+            ok=not validation_errors,
+            errors=validation_errors,
+            plan=agent_run.plan.to_dict(),
+        )
         plan = agent_run.plan
         if validation_errors:
             plan = no_op_plan("LLM intent plan failed validation.")
 
         guard_decision = self.guard.filter(plan, context)
+        trace.add(
+            "guard",
+            "filtered",
+            findings=[finding.to_dict() for finding in guard_decision.findings],
+            blocked_intents=[intent.to_dict() for intent in guard_decision.blocked_intents],
+            allowed_intents=[intent.to_dict() for intent in guard_decision.allowed_intents],
+        )
         actions = self.action_realizer.realize(
             guard_decision.plan,
             response=agent_run.response,
             context=context,
         )
+        trace.add("action_realizer", "realized", action_count=len(actions))
+        trace.add("action", "planned", actions=[_action_to_dict(action) for action in actions])
 
         fallback_reason = agent_run.fallback_reason
         if validation_errors:
@@ -116,6 +158,7 @@ class DecisionPipeline:
                 "validator": {"ok": not validation_errors, "errors": validation_errors},
                 "guard": [finding.to_dict() for finding in guard_decision.findings],
                 "action_realizer": {"action_count": len(actions)},
+                "trace": trace.to_dict(),
             },
         )
         self.last_result = result
@@ -131,7 +174,7 @@ class DecisionPipeline:
         return None
 
 
-def _ignored_decision_result(context: AgentContext, reason: str) -> DecisionResult:
+def _ignored_decision_result(context: AgentContext, reason: str, *, trace: RuntimeTrace) -> DecisionResult:
     plan = no_op_plan(reason)
     return DecisionResult(
         intents=plan.intents,
@@ -146,5 +189,13 @@ def _ignored_decision_result(context: AgentContext, reason: str) -> DecisionResu
                 "reason": reason,
             },
             "action_realizer": {"action_count": 0},
+            "trace": trace.to_dict(),
         },
     )
+
+
+def _action_to_dict(action: object) -> dict[str, object]:
+    return {
+        "type": getattr(action, "type", ""),
+        "payload": dict(getattr(action, "payload", {}) or {}),
+    }

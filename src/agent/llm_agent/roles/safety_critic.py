@@ -58,15 +58,16 @@ class SafetyCritic:
             review = SafetyReview.from_dict(parse_json_object(raw))
         except Exception as exc:
             review = SafetyReview(decision="approve", reason="SafetyCritic fallback approval.")
-            return review, plan, {"fallback": True, "error": str(exc)}
+            return review, plan, {"prompt": prompt, "fallback": True, "error": str(exc)}
 
         if review.decision == "reject":
             from src.agent.decision.intent_model import no_op_plan
 
             return review, no_op_plan(review.reason or "SafetyCritic rejected the plan."), {
+                "prompt": prompt,
                 "raw": raw,
                 "fallback": False,
             }
         if review.decision == "revise" and review.revised_plan is not None:
-            return review, review.revised_plan, {"raw": raw, "fallback": False}
-        return review, plan, {"raw": raw, "fallback": False}
+            return review, review.revised_plan, {"prompt": prompt, "raw": raw, "fallback": False}
+        return review, plan, {"prompt": prompt, "raw": raw, "fallback": False}
