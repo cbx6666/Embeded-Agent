@@ -5,26 +5,15 @@ import unittest
 from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
-from src.agent.context.personal_context_builder import PersonalContextBuilder
+from src.agent.user.personal_context_builder import PersonalContextBuilder
 from src.agent.core import AgentCore
-from src.services.llm_service import LLMService
 from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.services.user_profile_service import DEFAULT_USER_ID, UserProfileService
 from src.storage.json_store import JsonStore
 from src.storage.long_term_memory_store import LongTermMemoryStore
 from src.storage.user_profile_store import UserProfileStore
-
-
-class StubLLMService(LLMService):
-    def __init__(self) -> None:
-        pass
-
-    def complete_json(self, role: str, prompt: str) -> str:  # type: ignore[override]
-        return super()._mock_complete_json(role, prompt)
-
-    def generate_reply(self, text: str, state=None) -> str:  # type: ignore[override]
-        return "test reply"
+from tests.fakes.fake_llm_service import FakeLLMService
 
 
 class UserProfileTestCase(unittest.TestCase):
@@ -135,7 +124,7 @@ class UserProfileTestCase(unittest.TestCase):
             output=ConsoleOutput(silent=True),
             timer_service=TimerService(background=False),
             runtime_history_service=RuntimeHistoryService(),
-            llm_service=StubLLMService(),
+            llm_service=FakeLLMService(reply_text="test reply"),
             store=JsonStore(self.root / "runtime.json"),
             personal_context_builder=PersonalContextBuilder(
                 long_term_memory_store=LongTermMemoryStore(self.root / "long_term_memory.json"),

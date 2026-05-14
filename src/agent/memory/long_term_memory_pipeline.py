@@ -29,6 +29,7 @@ from src.agent.memory.long_term_memory import LongTermMemory
 from src.agent.memory.memory_candidate import MemoryCandidate
 from src.agent.memory.memory_consolidator import MemoryConsolidator
 from src.agent.memory.memory_validator import MemoryValidator
+from src.agent.runtime.action_result import ActionResult
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 from src.storage.long_term_memory_store import LongTermMemoryStore
@@ -131,6 +132,7 @@ class LongTermMemoryPipeline:
         actions: list[Action],
         timestamp: int,
         *,
+        action_results: list[ActionResult] | None = None,
         source_event: Event | None = None,
         state: AgentState | None = None,
         llm_service: LLMService | None = None,
@@ -141,6 +143,7 @@ class LongTermMemoryPipeline:
             return None
         outcome = {
             "actions": [{"type": action.type, "payload": dict(action.payload)} for action in actions],
+            "action_results": [_action_result_to_dict(result) for result in action_results or []],
             "timestamp": timestamp,
         }
         context = self.context_builder.build(
@@ -208,9 +211,18 @@ class LongTermMemoryPipeline:
         prompt = (
             "Extract durable long-term memory candidates. Return JSON: "
             "{\"candidates\":[{\"memory_type\":\"behavior_preference\","
-            "\"content\":\"...\",\"confidence\":0.8,\"evidence\":[{}]}]}. "
+            "\"content\":\"...\",\"confidence\":0.8,\"evidence\":[{}],\"metadata\":{}}]}. "
             "Allowed memory_type values are behavior_preference, behavior_pattern, "
             "interaction_style, active_constraint, uncertain. "
+            "Identify durable user preferences explicitly stated in dialogue, including reminder style, "
+            "reminder frequency, preferred break activity, disliked content, and interaction style. "
+            "For user preference candidates, set metadata.preference_key and metadata.preference_value "
+            "with normalized values such as reminder_style=gentle or reminder_frequency=low_frequency. "
+            "Every evidence item must include source_event_type, timestamp, source, and either "
+            "user_text or snippet. Use source='dialogue' for user-stated dialogue evidence. "
+            "For behavior_preference, source_event_type must be user_text_input or speech_recognized; "
+            "do not infer preferences from fatigue, timer, system, or environment events. "
+            "Use metadata.contradicts when it contradicts an existing memory id. "
             "Do not write display_name, age, hobbies, TTS settings, or explicit profile fields.\n"
             + context.to_prompt()
         )
@@ -248,3 +260,13 @@ class LongTermMemoryPipeline:
             return approved, [str(item) for item in rejected], {"fallback": False}
         except Exception as exc:
             return candidates, [], {"fallback": True, "error": str(exc)}
+
+
+def _action_result_to_dict(result: ActionResult) -> dict[str, Any]:
+    return {
+        "action_type": result.action_type,
+        "success": bool(result.success),
+        "timestamp": int(result.timestamp),
+        "reason": result.reason,
+        "payload": dict(result.payload),
+    }

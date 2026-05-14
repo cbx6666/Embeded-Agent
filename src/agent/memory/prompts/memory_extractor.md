@@ -15,3 +15,5 @@ Return strict JSON only:
     }
   ]
 }
+
+For behavior_preference, only use evidence whose source_event_type is user_text_input or speech_recognized. Do not turn fatigue, timer, system, or environment events into user preferences.

@@ -1,0 +1,195 @@
+{
+  "updated_at": 1778689922,
+  "memories": [
+    {
+      "id": "3fbba11225e4759a",
+      "user_id": "xiaoli",
+      "memory_type": "behavior_preference",
+      "content": "User prefers calm interaction style when fatigued.",
+      "confidence": 0.6,
+      "evidence": [
+        {
+          "source_event_type": "user_fatigue_updated",
+          "timestamp": 1778688641,
+          "source": "dialogue",
+          "user_text": "High fatigue and neutral emotion suggest calm interaction."
+        }
+      ],
+      "source": "llm",
+      "metadata": {
+        "preference_key": "interaction_style",
+        "preference_value": "calm"
+      },
+      "created_at": 1778688641,
+      "updated_at": 1778688641,
+      "last_accessed_at": 1778688641,
+      "decay": 0.9997858212066719,
+      "status": "active",
+      "contradiction_of": null
+    },
+    {
+      "id": "ec74c70290024941",
+      "user_id": "xiaoli",
+      "memory_type": "behavior_preference",
+      "content": "User prefers gentle and less frequent reminders when studying.",
+      "confidence": 0.95,
+      "evidence": [
+        {
+          "source_event_type": "user_text_input",
+          "timestamp": 1778687257,
+          "source": "dialogue",
+          "user_text": "最近总感觉学习的时候有点累，你别太频繁提醒我，轻一点就行。"
+        }
+      ],
+      "source": "llm",
+      "metadata": {
+        "preference_key": "reminder_style",
+        "preference_value": "gentle",
+        "contradicts": null
+      },
+      "created_at": 1778687257,
+      "updated_at": 1778687257,
+      "last_accessed_at": 1778687257,
+      "decay": 0.9995933956713244,
+      "status": "active",
+      "contradiction_of": null
+    },
+    {
+      "id": "420f1a55de9039e2",
+      "user_id": "xiaoli",
+      "memory_type": "behavior_preference",
+      "content": "User prefers gentle reminder style when fatigued.",
+      "confidence": 0.81,
+      "evidence": [
+        {
+          "source_event_type": "user_fatigue_updated",
+          "timestamp": 1778688641,
+          "source": "dialogue",
+          "user_text": "User fatigue is high, focus active for 1284 seconds, idle attention."
+        },
+        {
+          "source_event_type": "user_fatigue_updated",
+          "timestamp": 1778688641,
+          "source": "dialogue",
+          "user_text": "小李，我注意到你好像有点累了。没关系，还有14分钟，慢慢来就好。"
+        }
+      ],
+      "source": "llm",
+      "metadata": {
+        "preference_key": "reminder_style",
+        "preference_value": "gentle"
+      },
+      "created_at": 1778688641,
+      "updated_at": 1778688641,
+      "last_accessed_at": 1778688641,
+      "decay": 0.9998972024201943,
+      "status": "active",
+      "contradiction_of": null
+    },
+    {
+      "id": "a0cf996e24e5875d",
+      "user_id": "xiaoli",
+      "memory_type": "behavior_preference",
+      "content": "User prefers gentle reminders and low frequency reminders when studying.",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "source_event_type": "user_text_input",
+          "timestamp": 1778687257,
+          "source": "dialogue",
+          "user_text": "最近总感觉学习的时候有点累，你别太频繁提醒我，轻一点就行。"
+        }
+      ],
+      "source": "llm",
+      "metadata": {
+        "preference_key": "reminder_style",
+        "preference_value": "gentle"
+      },
+      "created_at": 1778687257,
+      "updated_at": 1778687257,
+      "last_accessed_at": 1778687257,
+      "decay": 0.9995863518918148,
+      "status": "active",
+      "contradiction_of": null
+    },
+    {
+      "id": "3de6b744c8f804b0",
+      "user_id": "xiaoli",
+      "memory_type": "behavior_preference",
+      "content": "User prefers low frequency reminders when fatigued.",
+      "confidence": 0.6,
+      "evidence": [
+        {
+          "source_event_type": "user_fatigue_updated",
+          "timestamp": 1778688641,
+          "source": "dialogue",
+          "user_text": "High fatigue and idle attention suggest reduced interruption."
+        }
+      ],
+      "source": "llm",
+      "metadata": {
+        "preference_key": "reminder_frequency",
+        "preference_value": "low_frequency"
+      },
+      "created_at": 1778688641,
+      "updated_at": 1778688641,
+      "last_accessed_at": 1778688641,
+      "decay": 0.9997858212066719,
+      "status": "active",
+      "contradiction_of": null
+    },
+    {
+      "id": "a2ad93621b3c4c99",
+      "user_id": "xiaoli",
+      "memory_type": "behavior_preference",
+      "content": "User prefers low frequency reminders when studying.",
+      "confidence": 0.9175,
+      "evidence": [
+        {
+          "source_event_type": "user_text_input",
+          "timestamp": 1778687257,
+          "source": "dialogue",
+          "user_text": "最近总感觉学习的时候有点累，你别太频繁提醒我，轻一点就行。"
+        }
+      ],
+      "source": "llm",
+      "metadata": {
+        "preference_key": "reminder_frequency",
+        "preference_value": "low_frequency",
+        "contradicts": null
+      },
+      "created_at": 1778687257,
+      "updated_at": 1778687257,
+      "last_accessed_at": 1778687257,
+      "decay": 0.999585392500686,
+      "status": "active",
+      "contradiction_of": null
+    },
+    {
+      "id": "5434dbba4d017fba",
+      "user_id": "xiaoli",
+      "memory_type": "behavior_preference",
+      "content": "User prefers low reminder frequency when fatigued.",
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "source_event_type": "user_fatigue_updated",
+          "timestamp": 1778688641,
+          "source": "dialogue",
+          "user_text": "小李，我注意到你好像有点累了。没关系，还有14分钟，慢慢来就好。"
+        }
+      ],
+      "source": "llm",
+      "metadata": {
+        "preference_key": "reminder_frequency",
+        "preference_value": "low_frequency"
+      },
+      "created_at": 1778688641,
+      "updated_at": 1778688641,
+      "last_accessed_at": 1778688641,
+      "decay": 0.9997936309815568,
+      "status": "active",
+      "contradiction_of": null
+    }
+  ]
+}

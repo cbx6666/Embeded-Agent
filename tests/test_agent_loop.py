@@ -13,28 +13,16 @@ from src.agent.runtime.action_result import ActionResult
 from src.agent.runtime.autonomy import build_autonomous_check_event
 from src.agent.runtime.internal_events import build_internal_events_from_results
 from src.agent.runtime.loop import AgentLoop
-from src.services.llm_service import LLMService
 from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.storage.json_store import JsonStore
-
-
-class StubLLMService(LLMService):
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    def complete_json(self, role: str, prompt: str) -> str:  # type: ignore[override]
-        self.calls.append(role)
-        return super()._mock_complete_json(role, prompt)
-
-    def generate_reply(self, text: str, state=None) -> str:  # type: ignore[override]
-        return "fallback reply"
+from tests.fakes.fake_llm_service import FakeLLMService
 
 
 class AgentLoopTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.llm = StubLLMService()
+        self.llm = FakeLLMService(reply_text="fallback reply")
         self.core = AgentCore(
             output=ConsoleOutput(silent=True),
             timer_service=TimerService(background=False),
@@ -65,6 +53,64 @@ class AgentLoopTestCase(unittest.TestCase):
         self.assertIn("start_timer", {action.type for action in actions})
         self.assertTrue(self.core.state.focus.active)
         self.assertLessEqual(len(self.loop.recent_traces), 3)
+
+    def test_focus_start_generates_single_start_timer(self) -> None:
+        actions = self.loop.run_once(
+            Event(type="focus_start_requested", timestamp=2100, payload={"duration_sec": 1500, "source": "test"})
+        )
+
+        self.assertEqual(1, sum(1 for action in actions if action.type == "start_timer"))
+        self.assertEqual(1, sum(1 for action in actions if action.type == "display" and action.payload.get("reason") == "focus_start"))
+
+    def test_continue_focus_restores_focus_from_timer_action_result(self) -> None:
+        self.llm.responses.update(
+            {
+                "intent_planner": [
+                    '{"intents":[{"type":"continue_focus","priority":90,"reason":"continue","payload":{"duration_minutes":20},"requires_llm":false}],"reasoning":"continue","risk_level":"low","interrupt_user":false}'
+                ]
+            }
+        )
+
+        actions = self.loop.run_once(
+            Event(type="user_text_input", timestamp=2150, payload={"text": "continue focus", "source": "test"})
+        )
+
+        self.assertIn("start_timer", {action.type for action in actions})
+        self.assertTrue(self.core.state.focus.active)
+        self.assertEqual(self.core.state.focus.target_duration_sec, 1200)
+
+    def test_internal_system_trigger_does_not_replan_start_focus(self) -> None:
+        self.core.handle_event(
+            Event(type="focus_start_requested", timestamp=2200, payload={"duration_sec": 1500, "source": "test"})
+        )
+        self.llm.calls.clear()
+
+        actions, _ = self.core.handle_event(
+            Event(
+                type="system_triggered",
+                timestamp=2200,
+                payload={"trigger": "focus_timer_started", "source": "agent_action_result"},
+            )
+        )
+
+        self.assertEqual(actions, [])
+        self.assertEqual([intent.type for intent in self.core.last_intents], ["no_op"])
+        self.assertNotIn("intent_planner", self.llm.calls)
+
+    def test_agent_response_completed_does_not_trigger_visible_intents(self) -> None:
+        actions, _ = self.core.handle_event(
+            Event(
+                type="system_triggered",
+                timestamp=2300,
+                payload={"trigger": "agent_response_completed", "source": "agent_action_result"},
+            )
+        )
+
+        self.assertEqual(actions, [])
+        self.assertEqual([intent.type for intent in self.core.last_intents], ["no_op"])
+        self.assertNotIn("answer_user", {intent.type for intent in self.core.last_intents})
+        self.assertNotIn("suggest_rest", {intent.type for intent in self.core.last_intents})
+        self.assertNotIn("start_focus", {intent.type for intent in self.core.last_intents})
 
     def test_action_results_can_become_internal_events(self) -> None:
         event = Event(type="user_text_input", timestamp=3000, payload={"text": "hello"})
@@ -108,6 +154,42 @@ class AgentLoopTestCase(unittest.TestCase):
 
         self.assertTrue(any(action.payload.get("reason") == "rest_reminder" for action in first))
         self.assertFalse(any(action.payload.get("reason") == "rest_reminder" for action in second))
+
+    def test_allowed_focus_health_check_still_triggers_rest(self) -> None:
+        self.core.state.focus.active = True
+        self.core.state.focus.elapsed_sec = 600
+        self.core.state.focus.remaining_sec = 900
+        self.core.state.user.presence = "present"
+        self.core.state.user.fatigue_level = "high"
+
+        actions = self.loop.run_once(
+            Event(type="system_triggered", timestamp=6100, payload={"trigger": "focus_health_check", "source": "agent_autonomy"})
+        )
+
+        self.assertTrue(any(action.payload.get("reason") == "rest_reminder" for action in actions))
+
+    def test_allowed_environment_check_still_triggers_environment_feedback(self) -> None:
+        actions = self.loop.run_once(
+            Event(type="system_triggered", timestamp=6200, payload={"trigger": "environment_check", "source": "agent_autonomy"})
+        )
+
+        self.assertTrue(any(action.type == "set_light_state" for action in actions))
+        self.assertTrue(any(action.payload.get("reason") == "environment_warning" for action in actions))
+
+    def test_last_effective_decision_not_overwritten_by_internal_noop(self) -> None:
+        self.core.state.focus.active = True
+        self.core.state.focus.elapsed_sec = 600
+        self.core.state.focus.remaining_sec = 900
+        self.core.state.user.presence = "present"
+        self.core.state.user.fatigue_level = "high"
+
+        self.loop.run_once(
+            Event(type="system_triggered", timestamp=6300, payload={"trigger": "focus_health_check", "source": "agent_autonomy"})
+        )
+
+        self.assertIsNotNone(self.core.last_effective_decision_result)
+        self.assertIn("suggest_rest", {intent.type for intent in self.core.last_effective_decision_result.intents})  # type: ignore[union-attr]
+        self.assertEqual([intent.type for intent in self.core.last_decision_result.intents], ["no_op"])  # type: ignore[union-attr]
 
     def test_max_steps_prevents_infinite_internal_loop(self) -> None:
         loop = AgentLoop(self.core, max_steps=2)

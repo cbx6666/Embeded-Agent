@@ -8,4 +8,4 @@
 - `long_term_memory_store.py`：已验证的 `LongTermMemory` 持久化。
 - `user_profile_store.py`：显式 `UserProfile` 持久化。
 
-上层逻辑只依赖读写接口，不关心底层介质；后续可以替换为 SQLite 或其它嵌入式存储。
+存储层只负责持久化，不做用户认知融合；融合逻辑在 `agent/user/personal_context_builder.py`。

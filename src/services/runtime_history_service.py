@@ -19,8 +19,10 @@ PersonalContextBuilder。它不读取 LongTermMemory，也不依赖 UserProfile�
 """
 
 from collections import Counter
+from dataclasses import replace
 
 from src.agent.action import Action
+from src.agent.config.policy_config import RuntimeHistoryPolicyConfig
 from src.agent.event import Event
 from src.agent.state import AgentState
 
@@ -30,27 +32,50 @@ class RuntimeHistoryService:
 
     def __init__(
         self,
-        max_recent_events: int = 20,
-        max_recent_messages: int = 20,
-        max_recent_actions: int = 20,
-        max_reminder_records: int = 50,
-        max_attention_records: int = 120,
-        max_environment_records: int = 120,
-        max_focus_sessions: int = 10,
-        max_emotion_samples: int = 120,
-        max_emotion_summaries: int = 60,
-        emotion_summary_window_sec: int = 60,
+        max_recent_events: int | None = None,
+        max_recent_messages: int | None = None,
+        max_recent_actions: int | None = None,
+        max_reminder_records: int | None = None,
+        max_attention_records: int | None = None,
+        max_environment_records: int | None = None,
+        max_focus_sessions: int | None = None,
+        max_emotion_samples: int | None = None,
+        max_emotion_summaries: int | None = None,
+        emotion_summary_window_sec: int | None = None,
+        policy_config: RuntimeHistoryPolicyConfig | None = None,
     ) -> None:
-        self.max_recent_events = max_recent_events
-        self.max_recent_messages = max_recent_messages
-        self.max_recent_actions = max_recent_actions
-        self.max_reminder_records = max_reminder_records
-        self.max_attention_records = max_attention_records
-        self.max_environment_records = max_environment_records
-        self.max_focus_sessions = max_focus_sessions
-        self.max_emotion_samples = max_emotion_samples
-        self.max_emotion_summaries = max_emotion_summaries
-        self.emotion_summary_window_sec = emotion_summary_window_sec
+        config = policy_config or RuntimeHistoryPolicyConfig()
+        if max_recent_events is not None:
+            config = replace(config, max_recent_events=max_recent_events)
+        if max_recent_messages is not None:
+            config = replace(config, max_recent_messages=max_recent_messages)
+        if max_recent_actions is not None:
+            config = replace(config, max_recent_actions=max_recent_actions)
+        if max_reminder_records is not None:
+            config = replace(config, max_reminder_records=max_reminder_records)
+        if max_attention_records is not None:
+            config = replace(config, max_attention_records=max_attention_records)
+        if max_environment_records is not None:
+            config = replace(config, max_environment_records=max_environment_records)
+        if max_focus_sessions is not None:
+            config = replace(config, max_focus_sessions=max_focus_sessions)
+        if max_emotion_samples is not None:
+            config = replace(config, max_emotion_samples=max_emotion_samples)
+        if max_emotion_summaries is not None:
+            config = replace(config, max_emotion_summaries=max_emotion_summaries)
+        if emotion_summary_window_sec is not None:
+            config = replace(config, emotion_summary_window_sec=emotion_summary_window_sec)
+        self.policy_config = config
+        self.max_recent_events = config.max_recent_events
+        self.max_recent_messages = config.max_recent_messages
+        self.max_recent_actions = config.max_recent_actions
+        self.max_reminder_records = config.max_reminder_records
+        self.max_attention_records = config.max_attention_records
+        self.max_environment_records = config.max_environment_records
+        self.max_focus_sessions = config.max_focus_sessions
+        self.max_emotion_samples = config.max_emotion_samples
+        self.max_emotion_summaries = config.max_emotion_summaries
+        self.emotion_summary_window_sec = config.emotion_summary_window_sec
 
     def record_event(self, state: AgentState, event: Event) -> None:
         """记录一条标准事件，并维护与运行期相关的滚动统计。"""

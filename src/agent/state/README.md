@@ -13,5 +13,5 @@
 - `interaction_state.py`：对话与交互状态。
 - `environment_state.py`：环境传感器状态。
 
-短期历史模型在 `agent/history/runtime_history.py`，显式用户画像模型在
-`agent/profile/user_profile.py`。
+短期历史模型在 `agent/history/runtime_history.py`；显式用户画像模型在
+`agent/user/user_profile.py`。

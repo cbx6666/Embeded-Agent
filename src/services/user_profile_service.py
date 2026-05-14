@@ -22,7 +22,7 @@ from collections.abc import Callable
 from dataclasses import asdict, fields
 from typing import Any
 
-from src.agent.profile.user_profile import UserInfo, UserPreference, UserProfile
+from src.agent.user.user_profile import UserInfo, UserPreference, UserProfile
 from src.storage.user_profile_store import UserProfileStore
 
 DEFAULT_USER_ID = "default"

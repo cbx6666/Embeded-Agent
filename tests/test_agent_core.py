@@ -7,29 +7,17 @@ from pathlib import Path
 from src.adapters.console_output import ConsoleOutput
 from src.agent.core import AgentCore
 from src.agent.event import Event
-from src.services.llm_service import LLMService
 from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.storage.json_store import JsonStore
-
-
-class SpyLLMService(LLMService):
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    def complete_json(self, role: str, prompt: str) -> str:  # type: ignore[override]
-        self.calls.append(role)
-        return super()._mock_complete_json(role, prompt)
-
-    def generate_reply(self, text: str, state=None) -> str:  # type: ignore[override]
-        return "fallback reply"
+from tests.fakes.fake_llm_service import FakeLLMService
 
 
 class AgentCoreTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
-        self.llm = SpyLLMService()
+        self.llm = FakeLLMService(reply_text="fallback reply")
         self.core = AgentCore(
             output=ConsoleOutput(silent=True),
             timer_service=TimerService(background=False),
@@ -63,6 +51,23 @@ class AgentCoreTestCase(unittest.TestCase):
         self.assertIn("response_writer", self.llm.calls)
         self.assertIn("speak", {action.type for action in actions})
         self.assertTrue(any(message["role"] == "user" for message in self.core.state.runtime_history.recent_messages))
+
+    def test_continue_focus_action_restores_state_without_agent_loop(self) -> None:
+        self.llm.responses.update(
+            {
+                "intent_planner": [
+                    '{"intents":[{"type":"continue_focus","priority":90,"reason":"continue","payload":{"duration_minutes":20},"requires_llm":false}],"reasoning":"continue","risk_level":"low","interrupt_user":false}'
+                ]
+            }
+        )
+
+        actions, _ = self.core.handle_event(
+            Event(type="user_text_input", timestamp=2100, payload={"text": "continue focus", "source": "test"})
+        )
+
+        self.assertIn("start_timer", {action.type for action in actions})
+        self.assertTrue(self.core.state.focus.active)
+        self.assertEqual(self.core.state.focus.target_duration_sec, 1200)
 
     def test_timer_finished_generates_completion_feedback(self) -> None:
         self.core.handle_event(

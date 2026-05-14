@@ -55,12 +55,17 @@ class ResponseWriter:
         try:
             raw = llm_service.complete_json(self.role_name, prompt)
             draft = ResponseDraft.from_dict(parse_json_object(raw))
+            draft = _remove_false_preference_commitments(draft, plan)
             if not draft.speak_text and not draft.display_text:
                 raise ValueError("response is empty")
             return draft, {"raw": raw, "fallback": False}
         except Exception as exc:
             fallback = llm_service.generate_reply(context.user_text or situation.summary, None)
-            return ResponseDraft(speak_text=fallback, display_text=fallback), {
+            draft = _remove_false_preference_commitments(
+                ResponseDraft(speak_text=fallback, display_text=fallback),
+                plan,
+            )
+            return draft, {
                 "fallback": True,
                 "error": str(exc),
             }
@@ -70,6 +75,47 @@ def _needs_response(plan: IntentPlan) -> bool:
     """判断计划中是否存在需要用户可见表达的 intent。"""
 
     return any(intent.type in {"answer_user", "suggest_rest", "remind_distraction", "update_status_feedback", "display_update"} for intent in plan.intents)
+
+
+def _remove_false_preference_commitments(draft: ResponseDraft, plan: IntentPlan) -> ResponseDraft:
+    """Keep acknowledgements truthful when no persistent preference action exists."""
+
+    if _has_persistent_preference_update(plan):
+        return draft
+    if not any(_contains_false_commitment(text) for text in (draft.speak_text, draft.display_text)):
+        return draft
+    replacement = "好的，我会尽量少打扰你。"
+    return ResponseDraft(speak_text=replacement, display_text=replacement, tone=draft.tone or "calm")
+
+
+def _has_persistent_preference_update(plan: IntentPlan) -> bool:
+    return any(
+        intent.type in {"update_user_profile", "update_user_preference", "set_user_preference"}
+        for intent in plan.intents
+    )
+
+
+def _contains_false_commitment(text: str) -> bool:
+    normalized = str(text).strip().lower()
+    if not normalized:
+        return False
+    forbidden = (
+        "我已经记住",
+        "我记住了",
+        "以后一定",
+        "我已经设置",
+        "我会长期调整",
+        "我会调整提醒方式",
+        "以后我会少提醒",
+        "以后我都会少提醒你",
+        "i will remember",
+        "i've remembered",
+        "i have remembered",
+        "i've set",
+        "i have set",
+        "from now on",
+    )
+    return any(phrase in normalized for phrase in forbidden)
 
 
 def _prompt_path(name: str) -> Path:

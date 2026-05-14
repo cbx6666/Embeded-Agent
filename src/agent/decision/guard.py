@@ -10,24 +10,14 @@ AgentContext，下游输出是过滤后的 IntentPlan 与拦截原因。
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
+from src.agent.config.policy_config import GuardPolicyConfig
 from src.agent.decision.intent_model import AgentIntent, IntentPlan, no_op_plan
 from src.agent.decision.agent_context_builder import AgentContext
 
 
-INTERRUPTIVE_INTENTS = {
-    "suggest_rest",
-    "remind_distraction",
-    "adjust_environment_feedback",
-    "voice_interaction",
-}
-
-COOLDOWN_REASONS = {
-    "suggest_rest": "rest_reminder",
-    "remind_distraction": "distraction_reminder",
-    "adjust_environment_feedback": "environment_warning",
-}
+GuardConfig = GuardPolicyConfig
 
 
 @dataclass
@@ -70,8 +60,16 @@ class DeterministicGuard:
     只执行稳定、安全、可审计的系统边界。
     """
 
-    def __init__(self, *, reminder_cooldown_sec: int = 300) -> None:
-        self.reminder_cooldown_sec = reminder_cooldown_sec
+    def __init__(
+        self,
+        *,
+        config: GuardPolicyConfig | None = None,
+        policy_config: GuardPolicyConfig | None = None,
+        reminder_cooldown_sec: int | None = None,
+    ) -> None:
+        self.config = policy_config or config or GuardPolicyConfig()
+        if reminder_cooldown_sec is not None:
+            self.config = replace(self.config, reminder_cooldown_sec=reminder_cooldown_sec)
 
     def filter(self, plan: IntentPlan, context: AgentContext) -> GuardDecision:
         """过滤不可执行或不应打扰用户的 intent。
@@ -122,25 +120,36 @@ class DeterministicGuard:
 
         state = context.state_summary
         user = state.get("user", {}) if isinstance(state, dict) else {}
-        if intent.type in INTERRUPTIVE_INTENTS and user.get("presence") == "away":
+        if (
+            context.event_type == "focus_start_requested"
+            and intent.type in {"suggest_rest", "reduce_reminder_frequency", "adjust_environment_feedback"}
+        ):
+            return "focus start should not be combined with reminder/environment adjustment intents"
+
+        if (
+            intent.type in self.config.interruptive_intents
+            and user.get("presence") == self.config.block_interruptive_when_presence
+        ):
             return "presence safety blocked an interruptive intent while user is away"
 
-        if intent.type in COOLDOWN_REASONS:
+        if intent.type in self.config.cooldown_reasons:
             cooldowns = state.get("cooldowns", {}) if isinstance(state, dict) else {}
-            reason = str(intent.payload.get("reason") or COOLDOWN_REASONS[intent.type])
+            reason = str(intent.payload.get("reason") or self.config.cooldown_reasons[intent.type])
             last_ts = cooldowns.get(reason) if isinstance(cooldowns, dict) else None
             if last_ts is not None:
                 try:
                     elapsed = int(context.timestamp) - int(last_ts)
                 except (TypeError, ValueError):
-                    elapsed = self.reminder_cooldown_sec
-                if elapsed < self.reminder_cooldown_sec:
+                    if self.config.allow_on_invalid_cooldown_timestamp:
+                        return None
+                    return f"cooldown timestamp invalid for {reason}"
+                if elapsed < self.config.reminder_cooldown_sec:
                     return f"cooldown active for {reason}"
 
         if (
             intent.type == "answer_user"
             and intent.requires_llm
-            and context.event_type not in {"user_text_input", "speech_recognized"}
+            and context.event_type not in self.config.user_initiated_event_types
         ):
             return "autonomous LLM reply is not allowed without a user message"
         return None

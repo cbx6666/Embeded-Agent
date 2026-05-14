@@ -23,7 +23,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.agent.context.personal_context import PersonalContext
+from src.agent.user.personal_context import PersonalContext
 from src.agent.event import Event
 from src.agent.state import AgentState
 
@@ -56,6 +56,7 @@ class AgentContext:
             "state": self.state_summary,
             "previous_state": self.previous_state_summary,
             "personal_context": personal,
+            "personalization_guidance": _personalization_guidance(self.personal_context, self.relevant_memories),
             "recent_messages": self.recent_messages,
             "relevant_memories": self.relevant_memories,
         }
@@ -148,3 +149,68 @@ def _summarize_state(state: AgentState | None) -> dict[str, Any]:
         },
         "cooldowns": dict(state.cooldown.reminder_last_ts),
     }
+
+
+def _personalization_guidance(
+    personal_context: PersonalContext | None,
+    relevant_memories: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """把显式画像和相关长期记忆压成 ResponseWriter/Planner 容易消费的提示块。"""
+
+    if personal_context is None:
+        return {}
+    conflicts = [
+        {
+            "content": item.get("content"),
+            "conflict_with": item.get("conflict_with"),
+            "policy": item.get("conflict_policy"),
+        }
+        for item in personal_context.uncertain_memories
+        if item.get("conflict_with")
+    ]
+    style_hints = _style_hints(personal_context.profile_items, relevant_memories)
+    return {
+        "explicit_user_preferences": [
+            {
+                "content": item.get("content"),
+                "source": item.get("source"),
+                "profile_key": item.get("profile_key"),
+                "profile_value": item.get("profile_value"),
+            }
+            for item in personal_context.profile_items
+        ],
+        "relevant_long_term_memory": [
+            {
+                "content": item.get("content"),
+                "source": item.get("source"),
+                "confidence": item.get("confidence"),
+                "effective_confidence": item.get("effective_confidence"),
+                "memory_type": item.get("memory_type"),
+                "conflict_with": item.get("conflict_with"),
+            }
+            for item in relevant_memories
+            if item.get("source") == "LongTermMemory"
+        ],
+        "profile_memory_conflicts": conflicts,
+        "response_style_hints": style_hints,
+    }
+
+
+def _style_hints(
+    profile_items: tuple[dict[str, Any], ...],
+    relevant_memories: list[dict[str, Any]],
+) -> list[str]:
+    text = " ".join(
+        str(item.get("content", ""))
+        + " "
+        + str(item.get("profile_key", item.get("preference_key", "")))
+        + " "
+        + str(item.get("profile_value", item.get("preference_value", "")))
+        for item in list(profile_items) + relevant_memories
+    ).lower()
+    hints: list[str] = []
+    if any(term in text for term in ["gentle", "温和", "柔和"]):
+        hints.append("Use a gentle tone; avoid commands.")
+    if any(term in text for term in ["low_frequency", "低频", "不要频繁", "不频繁", "少提醒"]):
+        hints.append("Avoid promising that settings were changed unless an action/profile update really happened.")
+    return hints

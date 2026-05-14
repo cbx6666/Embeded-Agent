@@ -8,8 +8,7 @@
 
 - `history/`：当前运行期短期历史，不保存稳定偏好。
 - `memory/`：系统从长期交互中学习到的可证据化长期记忆。
-- `profile/`：用户明确声明或系统明确配置的权威用户资料。
-- `context/`：决策层唯一读取的只读 `PersonalContext`。
+- `user/`：用户认知层，包含静态显式 `UserProfile` 和动态决策快照 `PersonalContext`。
 - `decision/`：只消费 `PersonalContext`，不直接读取任何 store。
 
 Authoritative Source：
