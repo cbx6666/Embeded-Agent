@@ -27,7 +27,7 @@ from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
 from src.agent.action import Action
-from src.agent.context.personal_context_builder import PersonalContextBuilder
+from src.agent.user.personal_context_builder import PersonalContextBuilder
 from src.agent.decision.decision_pipeline import DecisionPipeline
 from src.agent.decision.decision_result import DecisionResult
 from src.agent.decision.intent_model import AgentIntent
@@ -89,7 +89,9 @@ class AgentCore:
 
         self.last_intents: list[AgentIntent] = []
         self.last_decision_result: DecisionResult | None = None
+        self.last_effective_decision_result: DecisionResult | None = None
         self.last_action_results: list[ActionResult] = []
+        self.last_effective_action_results: list[ActionResult] = []
         self._lock = threading.RLock()
 
     def handle_event(self, event: Event) -> tuple[list[Action], list[ActionResult]]:
@@ -126,12 +128,13 @@ class AgentCore:
                 personal_context=personal_context,
             )
             actions = decision_result.actions
-            results = self._execute_actions(actions, event.timestamp)
+            results = self._execute_actions(actions, event.timestamp, source_event=event)
 
             self.long_term_memory_pipeline.process_actions(
                 self.state.current_user_id,
                 actions,
                 event.timestamp,
+                action_results=results,
                 source_event=event,
                 state=self.state,
                 llm_service=self.llm_service,
@@ -140,6 +143,9 @@ class AgentCore:
             self.last_intents = decision_result.intents
             self.last_decision_result = decision_result
             self.last_action_results = results
+            if actions:
+                self.last_effective_decision_result = decision_result
+                self.last_effective_action_results = results
 
             self.runtime_history_service.trim(self.state)
             self.store.save_state(self.state)
@@ -230,17 +236,18 @@ class AgentCore:
                 timestamp=event.timestamp,
             )
 
-    def _execute_actions(self, actions: list[Action], action_ts: int) -> list[ActionResult]:
+    def _execute_actions(self, actions: list[Action], action_ts: int, *, source_event: Event) -> list[ActionResult]:
         results: list[ActionResult] = []
         for action in actions:
             result = self.device_adapter.execute(action, action_ts)
             results.append(result)
             if result.success:
-                self._after_successful_action(action, action_ts)
+                self._after_successful_action(action, action_ts, source_event=source_event)
         return results
 
-    def _after_successful_action(self, action: Action, action_ts: int) -> None:
+    def _after_successful_action(self, action: Action, action_ts: int, *, source_event: Event) -> None:
         self.runtime_history_service.record_action(self.state, action, action_ts)
+        self._sync_focus_state_from_timer_action(action, action_ts, source_event=source_event)
 
         if action.type not in {
             "speak",
@@ -271,6 +278,37 @@ class AgentCore:
         reason = action.payload.get("reason")
         if reason:
             self.state.cooldown.reminder_last_ts[str(reason)] = action_ts
+
+    def _sync_focus_state_from_timer_action(self, action: Action, action_ts: int, *, source_event: Event) -> None:
+        if action.type == "start_timer":
+            self.state = reduce_state(
+                self.state,
+                Event(
+                    type="system_triggered",
+                    timestamp=action_ts,
+                    payload={
+                        "trigger": "focus_timer_started",
+                        "source": "agent_action_result",
+                        "source_event_type": source_event.type,
+                        "duration_sec": action.payload.get("duration_sec"),
+                    },
+                ),
+            )
+            return
+
+        if action.type == "stop_timer":
+            self.state = reduce_state(
+                self.state,
+                Event(
+                    type="system_triggered",
+                    timestamp=action_ts,
+                    payload={
+                        "trigger": "focus_timer_stopped",
+                        "source": "agent_action_result",
+                        "source_event_type": source_event.type,
+                    },
+                ),
+            )
 
     def _on_timer_tick(self, remaining_sec: int) -> None:
         event_type = "timer_finished" if remaining_sec <= 0 else "timer_ticked"

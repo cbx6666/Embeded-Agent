@@ -6,7 +6,7 @@
 
 - `runtime_history_service.py`：维护 `RuntimeHistory` 的短期窗口和滚动统计。
 - `user_profile_service.py`：管理显式 `UserProfile` 的业务入口。
-- `llm_service.py`：LLM 调用适配。
+- `llm_service.py`：DeepSeek LLM 调用适配。
 - `timer_service.py`：计时器能力适配。
 
 领域语义仍在 `src/agent/`：`RuntimeHistory`、`LongTermMemory`、`UserProfile` 和

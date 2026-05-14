@@ -60,14 +60,49 @@ def _handle_focus_start_requested(state: AgentState, event: Event) -> None:
         return
 
     duration_sec = _optional_int(event.payload.get("duration_sec"), 0) or 0
+    _start_focus_session(
+        state,
+        start_ts=event.timestamp,
+        duration_sec=duration_sec,
+        triggered_by=str(event.payload.get("source", "user")),
+    )
+
+
+def _handle_system_triggered(state: AgentState, event: Event) -> None:
+    """Consume observable timer result events so FocusState follows the real timer."""
+
+    trigger = str(event.payload.get("trigger", "")).strip()
+    if trigger == "focus_timer_started":
+        duration_sec = _optional_int(event.payload.get("duration_sec"), state.focus.target_duration_sec) or 0
+        _start_focus_session(
+            state,
+            start_ts=event.timestamp,
+            duration_sec=duration_sec,
+            triggered_by=str(event.payload.get("source_event_type") or event.payload.get("source") or "timer"),
+        )
+        return
+
+    if trigger == "focus_timer_stopped" and state.focus.active:
+        _complete_focus_session(state, event.timestamp, reason="timer_stopped")
+
+
+def _start_focus_session(
+    state: AgentState,
+    *,
+    start_ts: int,
+    duration_sec: int,
+    triggered_by: str,
+) -> None:
+    """Set FocusState to an active session from an observable event."""
+
     state.interaction.mode = "focus"
     state.interaction.dialogue_state = "idle"
     state.focus.active = True
-    state.focus.start_ts = event.timestamp
+    state.focus.start_ts = start_ts
     state.focus.target_duration_sec = duration_sec
     state.focus.elapsed_sec = 0
     state.focus.remaining_sec = duration_sec
-    state.focus.triggered_by = str(event.payload.get("source", "user"))
+    state.focus.triggered_by = triggered_by
 
 
 def _handle_focus_stop_requested(state: AgentState, event: Event) -> None:
@@ -158,8 +193,13 @@ def _handle_timer_ticked(state: AgentState, event: Event) -> None:
     if not state.focus.active or state.focus.start_ts is None:
         return
 
-    state.focus.remaining_sec = _optional_int(event.payload.get("remaining_sec"), 0)
-    state.focus.elapsed_sec = max(0, event.timestamp - state.focus.start_ts)
+    remaining_sec = max(0, _optional_int(event.payload.get("remaining_sec"), 0) or 0)
+    elapsed_sec = max(0, event.timestamp - state.focus.start_ts)
+    target_sec = state.focus.target_duration_sec or 0
+    state.focus.remaining_sec = remaining_sec
+    state.focus.elapsed_sec = min(elapsed_sec, target_sec) if target_sec > 0 else elapsed_sec
+    if remaining_sec <= 0 or (target_sec > 0 and elapsed_sec >= target_sec):
+        _complete_focus_session(state, event.timestamp, reason="timer_complete")
 
 
 def _handle_timer_finished(state: AgentState, event: Event) -> None:
@@ -245,4 +285,5 @@ REDUCERS: dict[str, StateReducer] = {
     "tts_finished": _handle_tts_finished,
     "timer_ticked": _handle_timer_ticked,
     "timer_finished": _handle_timer_finished,
+    "system_triggered": _handle_system_triggered,
 }

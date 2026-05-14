@@ -64,6 +64,47 @@ class ReducerTestCase(unittest.TestCase):
         self.assertEqual(state.focus.last_focus_end_ts, 60)
         self.assertEqual(state.runtime_history.focus_sessions[-1]["reason"], "timer_complete")
 
+    def test_system_timer_events_restore_and_stop_focus(self) -> None:
+        state = AgentState()
+
+        reduce_state(
+            state,
+            Event(
+                type="system_triggered",
+                timestamp=100,
+                payload={
+                    "trigger": "focus_timer_started",
+                    "source": "agent_action_result",
+                    "source_event_type": "user_text_input",
+                    "duration_sec": 1200,
+                },
+            ),
+        )
+        self.assertTrue(state.focus.active)
+        self.assertEqual(state.focus.target_duration_sec, 1200)
+        self.assertEqual(state.focus.remaining_sec, 1200)
+
+        reduce_state(
+            state,
+            Event(
+                type="system_triggered",
+                timestamp=220,
+                payload={"trigger": "focus_timer_stopped", "source": "agent_action_result"},
+            ),
+        )
+        self.assertFalse(state.focus.active)
+        self.assertEqual(state.runtime_history.focus_sessions[-1]["reason"], "timer_stopped")
+
+    def test_timer_tick_past_target_completes_focus(self) -> None:
+        state = AgentState()
+        reduce_state(state, Event(type="focus_start_requested", timestamp=10, payload={"duration_sec": 60}))
+
+        reduce_state(state, Event(type="timer_ticked", timestamp=75, payload={"remaining_sec": 0}))
+
+        self.assertFalse(state.focus.active)
+        self.assertEqual(state.focus.last_focus_end_ts, 75)
+        self.assertEqual(state.runtime_history.focus_sessions[-1]["reason"], "timer_complete")
+
     def test_user_state_events_update_fields_and_confidence(self) -> None:
         """用户感知事件更新对应用户状态块。"""
         state = AgentState()
@@ -167,6 +208,7 @@ class ReducerTestCase(unittest.TestCase):
 
         self.assertIn("REDUCERS", source)
         self.assertIn("focus_start_requested", REDUCERS)
+        self.assertIn("system_triggered", REDUCERS)
         self.assertNotIn("src.agent.action", source)
         self.assertNotIn("src.agent.decision.intent", source)
 

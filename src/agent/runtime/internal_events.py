@@ -45,6 +45,7 @@ def build_internal_events_from_results(
         )
 
     if "start_timer" in successful_types:
+        timer_payload = _first_success_payload(results, "start_timer")
         internal_events.append(
             Event(
                 type="system_triggered",
@@ -52,6 +53,8 @@ def build_internal_events_from_results(
                 payload={
                     "trigger": "focus_timer_started",
                     "source": "agent_action_result",
+                    "source_event_type": event.type,
+                    "duration_sec": timer_payload.get("duration_sec"),
                 },
             )
         )
@@ -64,6 +67,7 @@ def build_internal_events_from_results(
                 payload={
                     "trigger": "focus_timer_stopped",
                     "source": "agent_action_result",
+                    "source_event_type": event.type,
                 },
             )
         )
@@ -97,3 +101,10 @@ def _event_timestamp(event: Event, results: list[ActionResult]) -> int:
     if results:
         return int(results[-1].timestamp)
     return int(event.timestamp)
+
+
+def _first_success_payload(results: list[ActionResult], action_type: str) -> dict[str, object]:
+    for result in results:
+        if result.success and result.action_type == action_type:
+            return dict(result.payload)
+    return {}

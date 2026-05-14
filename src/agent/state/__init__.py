@@ -21,7 +21,7 @@ from src.agent.state.types import (
     UserPresence,
 )
 from src.agent.state.user_state import UserState
-from src.agent.profile.user_profile import (
+from src.agent.user.user_profile import (
     UserInfo,
     UserPreference,
     UserProfile,
