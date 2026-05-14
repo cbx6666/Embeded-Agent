@@ -23,6 +23,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.agent.config.policy_config import ContextPolicyConfig
 from src.agent.user.personal_context import PersonalContext
 from src.agent.event import Event
 from src.agent.state import AgentState
@@ -73,11 +74,11 @@ class AgentContextBuilder:
     def __init__(
         self,
         *,
-        max_recent_messages: int = 6,
-        max_relevant_memories: int = 8,
+        policy_config: ContextPolicyConfig | None = None,
     ) -> None:
-        self.max_recent_messages = max_recent_messages
-        self.max_relevant_memories = max_relevant_memories
+        cfg = policy_config or ContextPolicyConfig()
+        self.max_recent_messages = cfg.max_recent_messages
+        self.max_relevant_memories = cfg.max_relevant_memories
 
     def build(
         self,
@@ -168,7 +169,6 @@ def _personalization_guidance(
         for item in personal_context.uncertain_memories
         if item.get("conflict_with")
     ]
-    style_hints = _style_hints(personal_context.profile_items, relevant_memories)
     return {
         "explicit_user_preferences": [
             {
@@ -192,25 +192,4 @@ def _personalization_guidance(
             if item.get("source") == "LongTermMemory"
         ],
         "profile_memory_conflicts": conflicts,
-        "response_style_hints": style_hints,
     }
-
-
-def _style_hints(
-    profile_items: tuple[dict[str, Any], ...],
-    relevant_memories: list[dict[str, Any]],
-) -> list[str]:
-    text = " ".join(
-        str(item.get("content", ""))
-        + " "
-        + str(item.get("profile_key", item.get("preference_key", "")))
-        + " "
-        + str(item.get("profile_value", item.get("preference_value", "")))
-        for item in list(profile_items) + relevant_memories
-    ).lower()
-    hints: list[str] = []
-    if any(term in text for term in ["gentle", "温和", "柔和"]):
-        hints.append("Use a gentle tone; avoid commands.")
-    if any(term in text for term in ["low_frequency", "低频", "不要频繁", "不频繁", "少提醒"]):
-        hints.append("Avoid promising that settings were changed unless an action/profile update really happened.")
-    return hints

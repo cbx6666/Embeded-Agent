@@ -11,8 +11,11 @@ SituationAnalyst 角色模块。
 from pathlib import Path
 
 from src.agent.decision.agent_context_builder import AgentContext
+from src.agent.prompt_io import prompt_path, read_prompt
 from src.agent.llm_agent.schemas import SituationFrame, fallback_situation, parse_json_object
 from src.services.llm_service import LLMService
+
+_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 
 
 class SituationAnalyst:
@@ -24,13 +27,13 @@ class SituationAnalyst:
 
     role_name = "situation_analyst"
 
-    def __init__(self, prompt_path: Path | None = None) -> None:
-        self.prompt_path = prompt_path or _prompt_path("situation_analyst.md")
+    def __init__(self, prompt_path_override: Path | None = None) -> None:
+        self.prompt_path = prompt_path_override or prompt_path(_PROMPTS_DIR, "situation_analyst.md")
 
     def analyze(self, context: AgentContext, llm_service: LLMService) -> tuple[SituationFrame, dict[str, object]]:
         """调用 LLM 生成 SituationFrame，并拒绝空摘要或非法 JSON。"""
 
-        prompt = f"{_read_prompt(self.prompt_path)}\n\nContext JSON:\n{context.to_prompt_json()}"
+        prompt = f"{read_prompt(self.prompt_path)}\n\nContext JSON:\n{context.to_prompt_json()}"
         try:
             raw = llm_service.complete_json(self.role_name, prompt)
             frame = SituationFrame.from_dict(parse_json_object(raw))
@@ -40,18 +43,3 @@ class SituationAnalyst:
         except Exception as exc:
             frame = fallback_situation(context.event_type, context.user_text)
             return frame, {"fallback": True, "error": str(exc)}
-
-
-def _prompt_path(name: str) -> Path:
-    """定位本角色 prompt 文件。"""
-
-    return Path(__file__).resolve().parents[1] / "prompts" / name
-
-
-def _read_prompt(path: Path) -> str:
-    """读取 prompt；缺失时使用严格 JSON 的最小兜底提示。"""
-
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return "Return strict JSON for the requested role."

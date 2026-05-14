@@ -27,15 +27,25 @@ from pathlib import Path
 
 from src.adapters.console_output import ConsoleOutput
 from src.agent.action import Action
+from src.agent.config.policy_config import (
+    ActionPolicyConfig,
+    ContextPolicyConfig,
+    CopyPolicyConfig,
+    DecisionPolicyConfig,
+    GuardPolicyConfig,
+    RuntimeHistoryPolicyConfig,
+)
 from src.agent.user.personal_context_builder import PersonalContextBuilder
+from src.agent.decision.action_realizer import ActionRealizer
 from src.agent.decision.decision_pipeline import DecisionPipeline
 from src.agent.decision.decision_result import DecisionResult
+from src.agent.decision.guard import DeterministicGuard
 from src.agent.decision.intent_model import AgentIntent
 from src.agent.event import Event
 from src.agent.memory.long_term_memory_pipeline import LongTermMemoryPipeline
 from src.agent.reducer import reduce_state
-from src.agent.runtime.action_result import ActionResult
-from src.agent.runtime.device_adapter import DeviceAdapter
+from src.agent.execution.action_result import ActionResult
+from src.agent.execution.device_adapter import DeviceAdapter
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 from src.services.runtime_history_service import RuntimeHistoryService
@@ -332,20 +342,46 @@ def build_default_core(
     long_term_memory_store_path: str | Path = "data/long_term_memory.json",
     timer_background: bool = True,
     output: ConsoleOutput | None = None,
+    *,
+    runtime_history_policy: RuntimeHistoryPolicyConfig | None = None,
+    context_policy: ContextPolicyConfig | None = None,
+    decision_policy: DecisionPolicyConfig | None = None,
+    guard_policy: GuardPolicyConfig | None = None,
+    action_policy: ActionPolicyConfig | None = None,
+    copy_policy: CopyPolicyConfig | None = None,
 ) -> AgentCore:
     long_term_store = LongTermMemoryStore(long_term_memory_store_path)
     profile_service = UserProfileService(UserProfileStore(profile_store_path))
+
+    runtime_history_service = RuntimeHistoryService(policy_config=runtime_history_policy)
+    personal_context_builder = PersonalContextBuilder(
+        long_term_memory_store=long_term_store,
+        user_profile_service=profile_service,
+        policy_config=context_policy,
+    )
+
+    decision_pipeline = None
+    if decision_policy or guard_policy or action_policy or copy_policy:
+        guard = DeterministicGuard(policy_config=guard_policy) if guard_policy else DeterministicGuard()
+        realizer = ActionRealizer(
+            action_policy=action_policy,
+            copy_policy=copy_policy,
+        ) if (action_policy or copy_policy) else ActionRealizer()
+        decision_pipeline = DecisionPipeline(
+            guard=guard,
+            action_realizer=realizer,
+            decision_policy=decision_policy,
+        )
+
     return AgentCore(
         output=output or ConsoleOutput(),
         timer_service=TimerService(background=timer_background),
-        runtime_history_service=RuntimeHistoryService(),
+        runtime_history_service=runtime_history_service,
         llm_service=LLMService(),
         store=JsonStore(store_path),
         long_term_memory_pipeline=LongTermMemoryPipeline(long_term_store),
-        personal_context_builder=PersonalContextBuilder(
-            long_term_memory_store=long_term_store,
-            user_profile_service=profile_service,
-        ),
+        personal_context_builder=personal_context_builder,
+        decision_pipeline=decision_pipeline,
     )
 
 

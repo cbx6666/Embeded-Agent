@@ -19,7 +19,6 @@ PersonalContextBuilder。它不读取 LongTermMemory，也不依赖 UserProfile�
 """
 
 from collections import Counter
-from dataclasses import replace
 
 from src.agent.action import Action
 from src.agent.config.policy_config import RuntimeHistoryPolicyConfig
@@ -32,50 +31,10 @@ class RuntimeHistoryService:
 
     def __init__(
         self,
-        max_recent_events: int | None = None,
-        max_recent_messages: int | None = None,
-        max_recent_actions: int | None = None,
-        max_reminder_records: int | None = None,
-        max_attention_records: int | None = None,
-        max_environment_records: int | None = None,
-        max_focus_sessions: int | None = None,
-        max_emotion_samples: int | None = None,
-        max_emotion_summaries: int | None = None,
-        emotion_summary_window_sec: int | None = None,
+        *,
         policy_config: RuntimeHistoryPolicyConfig | None = None,
     ) -> None:
-        config = policy_config or RuntimeHistoryPolicyConfig()
-        if max_recent_events is not None:
-            config = replace(config, max_recent_events=max_recent_events)
-        if max_recent_messages is not None:
-            config = replace(config, max_recent_messages=max_recent_messages)
-        if max_recent_actions is not None:
-            config = replace(config, max_recent_actions=max_recent_actions)
-        if max_reminder_records is not None:
-            config = replace(config, max_reminder_records=max_reminder_records)
-        if max_attention_records is not None:
-            config = replace(config, max_attention_records=max_attention_records)
-        if max_environment_records is not None:
-            config = replace(config, max_environment_records=max_environment_records)
-        if max_focus_sessions is not None:
-            config = replace(config, max_focus_sessions=max_focus_sessions)
-        if max_emotion_samples is not None:
-            config = replace(config, max_emotion_samples=max_emotion_samples)
-        if max_emotion_summaries is not None:
-            config = replace(config, max_emotion_summaries=max_emotion_summaries)
-        if emotion_summary_window_sec is not None:
-            config = replace(config, emotion_summary_window_sec=emotion_summary_window_sec)
-        self.policy_config = config
-        self.max_recent_events = config.max_recent_events
-        self.max_recent_messages = config.max_recent_messages
-        self.max_recent_actions = config.max_recent_actions
-        self.max_reminder_records = config.max_reminder_records
-        self.max_attention_records = config.max_attention_records
-        self.max_environment_records = config.max_environment_records
-        self.max_focus_sessions = config.max_focus_sessions
-        self.max_emotion_samples = config.max_emotion_samples
-        self.max_emotion_summaries = config.max_emotion_summaries
-        self.emotion_summary_window_sec = config.emotion_summary_window_sec
+        self.policy_config = policy_config or RuntimeHistoryPolicyConfig()
 
     def record_event(self, state: AgentState, event: Event) -> None:
         """记录一条标准事件，并维护与运行期相关的滚动统计。"""
@@ -138,15 +97,15 @@ class RuntimeHistoryService:
         """按配置裁剪所有短期历史窗口，避免 runtime state 无界膨胀。"""
 
         history = state.runtime_history
-        history.recent_events = history.recent_events[-self.max_recent_events :]
-        history.recent_messages = history.recent_messages[-self.max_recent_messages :]
-        history.recent_actions = history.recent_actions[-self.max_recent_actions :]
-        history.reminder_records = history.reminder_records[-self.max_reminder_records :]
-        history.attention_records = history.attention_records[-self.max_attention_records :]
-        history.environment_records = history.environment_records[-self.max_environment_records :]
-        history.focus_sessions = history.focus_sessions[-self.max_focus_sessions :]
-        history.emotion_samples = history.emotion_samples[-self.max_emotion_samples :]
-        history.emotion_summaries = history.emotion_summaries[-self.max_emotion_summaries :]
+        history.recent_events = history.recent_events[-self.policy_config.max_recent_events :]
+        history.recent_messages = history.recent_messages[-self.policy_config.max_recent_messages :]
+        history.recent_actions = history.recent_actions[-self.policy_config.max_recent_actions :]
+        history.reminder_records = history.reminder_records[-self.policy_config.max_reminder_records :]
+        history.attention_records = history.attention_records[-self.policy_config.max_attention_records :]
+        history.environment_records = history.environment_records[-self.policy_config.max_environment_records :]
+        history.focus_sessions = history.focus_sessions[-self.policy_config.max_focus_sessions :]
+        history.emotion_samples = history.emotion_samples[-self.policy_config.max_emotion_samples :]
+        history.emotion_summaries = history.emotion_summaries[-self.policy_config.max_emotion_summaries :]
 
     def _record_state_change(self, state: AgentState, event: Event) -> None:
         history = state.runtime_history
@@ -194,10 +153,10 @@ class RuntimeHistoryService:
         history = state.runtime_history
         latest_summary = history.emotion_summaries[-1] if history.emotion_summaries else None
         last_end_ts = int(latest_summary["end_ts"]) if latest_summary else None
-        if last_end_ts is not None and now_ts - last_end_ts < self.emotion_summary_window_sec:
+        if last_end_ts is not None and now_ts - last_end_ts < self.policy_config.emotion_summary_window_sec:
             return
 
-        window_start_ts = now_ts - self.emotion_summary_window_sec
+        window_start_ts = now_ts - self.policy_config.emotion_summary_window_sec
         window_samples = [
             item for item in history.emotion_samples if int(item["timestamp"]) >= window_start_ts
         ]
@@ -217,7 +176,7 @@ class RuntimeHistoryService:
             {
                 "start_ts": window_start_ts,
                 "end_ts": now_ts,
-                "window_sec": self.emotion_summary_window_sec,
+                "window_sec": self.policy_config.emotion_summary_window_sec,
                 "sample_count": total,
                 "dominant_emotion": dominant_emotion,
                 "distribution": {emotion: round(count / total, 3) for emotion, count in counts.items()},

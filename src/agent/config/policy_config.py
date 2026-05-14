@@ -3,7 +3,7 @@ from __future__ import annotations
 """Agent 策略配置。
 
 它是什么：
-集中保存冷却规则、上下文裁剪、动作边界、默认文案和 RuntimeHistory 窗口大小。
+集中保存冷却规则、上下文裁剪、动作边界、默认文案、检索排序权重和 RuntimeHistory 窗口大小。
 
 它不是什么：
 它不是协议定义，不替代 EventType / IntentType / ActionType；也不是 Prompt 管理器，
@@ -75,6 +75,16 @@ class DecisionPolicyConfig:
     action_result_source: str = "agent_action_result"
     ignored_system_trigger_reason: str = "internal system trigger ignored by decision policy"
 
+    def is_allowed_trigger(self, trigger: str, source: str) -> bool:
+        """Return True if this system_triggered event should be processed."""
+        if source == self.action_result_source:
+            return False
+        if trigger in self.internal_system_triggers:
+            return False
+        if trigger not in self.allowed_autonomous_triggers:
+            return False
+        return True
+
 
 @dataclass(frozen=True)
 class ContextPolicyConfig:
@@ -85,6 +95,17 @@ class ContextPolicyConfig:
     max_recent_actions: int = 8
     uncertain_confidence_threshold: float = 0.55
     max_memory_items_per_bucket: int = 6
+    max_relevant_memories: int = 8
+    noisy_runtime_event_types: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            {"timer_ticked", "agent_response_completed", "focus_timer_started", "focus_timer_stopped"}
+        )
+    )
+    noisy_runtime_trigger_types: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            {"agent_response_completed", "focus_timer_started", "focus_timer_stopped", "timer_ticked"}
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -137,3 +158,66 @@ class RuntimeHistoryPolicyConfig:
     max_emotion_samples: int = 120
     max_emotion_summaries: int = 60
     emotion_summary_window_sec: int = 60
+
+
+def _default_source_weights() -> dict[str, float]:
+    return {
+        "UserProfile": 100.0,
+        "LongTermMemory": 50.0,
+        "RuntimeHistory": 25.0,
+    }
+
+
+def _default_event_type_weights() -> dict[str, dict[str, float]]:
+    dialogue_weights = {
+        "explicit_user_preference": 14.0,
+        "interaction_style": 12.0,
+        "behavior_preference": 10.0,
+        "recent_message": 5.0,
+    }
+    focus_weights = {
+        "active_constraint": 14.0,
+        "behavior_pattern": 10.0,
+        "behavior_preference": 8.0,
+        "recent_action": 4.0,
+    }
+    user_state_weights = {
+        "behavior_pattern": 12.0,
+        "active_constraint": 10.0,
+        "recent_event": 5.0,
+    }
+    system_weights = {
+        "active_constraint": 12.0,
+        "behavior_pattern": 8.0,
+        "recent_action": 5.0,
+    }
+    return {
+        "user_text_input": dict(dialogue_weights),
+        "speech_recognized": dict(dialogue_weights),
+        "focus_start_requested": dict(focus_weights),
+        "focus_stop_requested": dict(focus_weights),
+        "timer_ticked": dict(focus_weights),
+        "timer_finished": dict(focus_weights),
+        "user_presence_updated": dict(user_state_weights),
+        "user_attention_updated": dict(user_state_weights),
+        "user_emotion_updated": dict(user_state_weights),
+        "user_fatigue_updated": dict(user_state_weights),
+        "system_triggered": dict(system_weights),
+    }
+
+
+@dataclass(frozen=True)
+class RetrievalPolicyConfig:
+    """PersonalContext.retrieve_relevant 的检索排序策略。"""
+
+    source_weights: dict[str, float] = field(default_factory=_default_source_weights)
+    event_type_weights: dict[str, dict[str, float]] = field(default_factory=_default_event_type_weights)
+    confidence_weight: float = 10.0
+    evidence_weight: float = 0.5
+    conflict_penalty: float = 30.0
+    content_term_weight: float = 3.0
+    tag_term_weight: float = 2.0
+    max_evidence_bonus: float = 4.0
+    memory_priority_confidence_weight: float = 20.0
+    memory_priority_evidence_weight: float = 1.5
+    memory_priority_max_evidence: int = 5

@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 from src.adapters.console_output import ConsoleOutput
 from src.agent.action import Action
-from src.agent.runtime.action_result import ActionResult
+from src.agent.execution.action_result import ActionResult
 from src.services.timer_service import TimerService
 
 

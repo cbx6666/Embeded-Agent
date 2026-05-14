@@ -126,11 +126,7 @@ class DecisionPipeline:
             return None
         trigger = str(event.payload.get("trigger", "")).strip()
         source = str(event.payload.get("source", "")).strip()
-        if source == self.decision_policy.action_result_source:
-            return self.decision_policy.ignored_system_trigger_reason
-        if trigger in self.decision_policy.internal_system_triggers:
-            return self.decision_policy.ignored_system_trigger_reason
-        if trigger not in self.decision_policy.allowed_autonomous_triggers:
+        if not self.decision_policy.is_allowed_trigger(trigger, source):
             return self.decision_policy.ignored_system_trigger_reason
         return None
 

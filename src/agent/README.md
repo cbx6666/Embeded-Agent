@@ -6,7 +6,7 @@
 
 核心边界：
 
-- `history/`：当前运行期短期历史，不保存稳定偏好。
+- `state/`：Agent 当前运行状态（含 `RuntimeHistory` 短期历史），不保存稳定偏好。
 - `memory/`：系统从长期交互中学习到的可证据化长期记忆。
 - `user/`：用户认知层，包含静态显式 `UserProfile` 和动态决策快照 `PersonalContext`。
 - `decision/`：只消费 `PersonalContext`，不直接读取任何 store。

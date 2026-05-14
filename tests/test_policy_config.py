@@ -11,7 +11,7 @@ from src.agent.config.policy_config import (
     GuardPolicyConfig,
     RuntimeHistoryPolicyConfig,
 )
-from src.agent.config.retrieval_policy import RetrievalPolicyConfig
+from src.agent.config.policy_config import RetrievalPolicyConfig
 from src.agent.user.personal_context import DEFAULT_RETRIEVAL_POLICY, PersonalContext
 from src.agent.user.personal_context_builder import PersonalContextBuilder
 from src.agent.decision.action_realizer import ActionRealizer
@@ -303,7 +303,7 @@ class PolicyConfigTestCase(unittest.TestCase):
     def test_runtime_history_policy_default_and_custom_windows_take_effect(self) -> None:
         defaults = RuntimeHistoryPolicyConfig()
         default_service = RuntimeHistoryService()
-        self.assertEqual(default_service.max_recent_events, defaults.max_recent_events)
+        self.assertEqual(default_service.policy_config.max_recent_events, defaults.max_recent_events)
 
         state = AgentState()
         service = RuntimeHistoryService(policy_config=RuntimeHistoryPolicyConfig(max_recent_events=2))
@@ -350,8 +350,18 @@ class PolicyConfigTestCase(unittest.TestCase):
         self.assertNotIn("_contains_any", llm_source)
         self.assertNotIn("OPENAI_API_KEY", llm_source)
         self.assertNotIn("EMBEDED_AGENT_LLM", llm_source)
-        self.assertIn("Extract durable long-term memory candidates", memory_source)
+        self.assertNotIn("Extract durable long-term memory candidates", memory_source)
+        self.assertNotIn("Decide whether this interaction may contain durable", memory_source)
+        self.assertNotIn("Review long-term memory candidates. Reject vague", memory_source)
         self.assertIn("memory_critic", memory_source)
+        self.assertIn("read_prompt(self.observer_prompt_path)", memory_source)
+        self.assertIn("read_prompt(self.extractor_prompt_path)", memory_source)
+        self.assertIn("read_prompt(self.critic_prompt_path)", memory_source)
+
+        observer_prompt = Path("src/agent/memory/prompts/memory_observer.md").read_text(encoding="utf-8")
+        extractor_prompt = Path("src/agent/memory/prompts/memory_extractor.md").read_text(encoding="utf-8")
+        self.assertIn("durable", observer_prompt.lower())
+        self.assertIn("behavior_preference", extractor_prompt)
 
 
 if __name__ == "__main__":

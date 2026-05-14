@@ -21,7 +21,10 @@ PersonalContextBuilder 后续读取 store 生成决策上下文。
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+from src.agent.prompt_io import prompt_path, read_prompt
 
 from src.agent.action import Action
 from src.agent.event import Event
@@ -29,7 +32,7 @@ from src.agent.memory.long_term_memory import LongTermMemory
 from src.agent.memory.memory_candidate import MemoryCandidate
 from src.agent.memory.memory_consolidator import MemoryConsolidator
 from src.agent.memory.memory_validator import MemoryValidator
-from src.agent.runtime.action_result import ActionResult
+from src.agent.execution.action_result import ActionResult
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 from src.storage.long_term_memory_store import LongTermMemoryStore
@@ -106,11 +109,18 @@ class LongTermMemoryPipeline:
         context_builder: LongTermMemoryContextBuilder | None = None,
         validator: MemoryValidator | None = None,
         consolidator: MemoryConsolidator | None = None,
+        observer_prompt_path: Path | None = None,
+        extractor_prompt_path: Path | None = None,
+        critic_prompt_path: Path | None = None,
     ) -> None:
         self.store = store or LongTermMemoryStore()
         self.context_builder = context_builder or LongTermMemoryContextBuilder()
         self.validator = validator or MemoryValidator()
         self.consolidator = consolidator or MemoryConsolidator()
+        _prompts = Path(__file__).resolve().parent / "prompts"
+        self.observer_prompt_path = observer_prompt_path or prompt_path(_prompts, "memory_observer.md")
+        self.extractor_prompt_path = extractor_prompt_path or prompt_path(_prompts, "memory_extractor.md")
+        self.critic_prompt_path = critic_prompt_path or prompt_path(_prompts, "memory_critic.md")
         self.last_result: LongTermMemoryRunResult | None = None
 
     def process_event(
@@ -191,12 +201,7 @@ class LongTermMemoryPipeline:
         return result
 
     def _observe(self, context: LongTermMemoryContext, llm_service: LLMService) -> dict[str, Any]:
-        prompt = (
-            "Decide whether this interaction may contain durable long-term user memory. "
-            "Return JSON: {\"worth_remembering\": true|false, \"reason\": \"...\"}. "
-            "Do not treat recent conversation as long-term memory unless it provides durable evidence.\n"
-            + context.to_prompt()
-        )
+        prompt = f"{read_prompt(self.observer_prompt_path)}\n\nMemoryContext JSON:\n{context.to_prompt()}"
         try:
             data = json.loads(llm_service.complete_json("memory_observer", prompt))
             return data if isinstance(data, dict) else {"worth_remembering": False}
@@ -208,24 +213,7 @@ class LongTermMemoryPipeline:
         context: LongTermMemoryContext,
         llm_service: LLMService,
     ) -> tuple[list[MemoryCandidate], dict[str, Any]]:
-        prompt = (
-            "Extract durable long-term memory candidates. Return JSON: "
-            "{\"candidates\":[{\"memory_type\":\"behavior_preference\","
-            "\"content\":\"...\",\"confidence\":0.8,\"evidence\":[{}],\"metadata\":{}}]}. "
-            "Allowed memory_type values are behavior_preference, behavior_pattern, "
-            "interaction_style, active_constraint, uncertain. "
-            "Identify durable user preferences explicitly stated in dialogue, including reminder style, "
-            "reminder frequency, preferred break activity, disliked content, and interaction style. "
-            "For user preference candidates, set metadata.preference_key and metadata.preference_value "
-            "with normalized values such as reminder_style=gentle or reminder_frequency=low_frequency. "
-            "Every evidence item must include source_event_type, timestamp, source, and either "
-            "user_text or snippet. Use source='dialogue' for user-stated dialogue evidence. "
-            "For behavior_preference, source_event_type must be user_text_input or speech_recognized; "
-            "do not infer preferences from fatigue, timer, system, or environment events. "
-            "Use metadata.contradicts when it contradicts an existing memory id. "
-            "Do not write display_name, age, hobbies, TTS settings, or explicit profile fields.\n"
-            + context.to_prompt()
-        )
+        prompt = f"{read_prompt(self.extractor_prompt_path)}\n\nMemoryContext JSON:\n{context.to_prompt()}"
         try:
             data = json.loads(llm_service.complete_json("memory_extractor", prompt))
             raw = data.get("candidates", []) if isinstance(data, dict) else []
@@ -242,10 +230,8 @@ class LongTermMemoryPipeline:
         if not candidates:
             return [], [], {"skipped": True}
         prompt = (
-            "Review long-term memory candidates. Reject vague, unsupported, profile-only, "
-            "or short-lived runtime facts. Return JSON: "
-            "{\"approved_indexes\":[0],\"rejected_reasons\":[]}.\n"
-            + json.dumps([candidate.to_dict() for candidate in candidates], ensure_ascii=False)
+            f"{read_prompt(self.critic_prompt_path)}\n\n"
+            f"Candidates JSON:\n{json.dumps([candidate.to_dict() for candidate in candidates], ensure_ascii=False)}"
         )
         try:
             data = json.loads(llm_service.complete_json("memory_critic", prompt))
@@ -260,6 +246,7 @@ class LongTermMemoryPipeline:
             return approved, [str(item) for item in rejected], {"fallback": False}
         except Exception as exc:
             return candidates, [], {"fallback": True, "error": str(exc)}
+
 
 
 def _action_result_to_dict(result: ActionResult) -> dict[str, Any]:

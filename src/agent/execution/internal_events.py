@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from src.agent.action import Action
 from src.agent.event import Event
-from src.agent.runtime.action_result import ActionResult
+from src.agent.execution.action_result import ActionResult
 from src.agent.state import AgentState
 
 

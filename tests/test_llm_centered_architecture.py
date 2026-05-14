@@ -20,7 +20,7 @@ import src.agent.memory.long_term_memory_pipeline as long_term_memory_pipeline_m
 from src.agent.memory.long_term_memory_pipeline import LongTermMemoryPipeline
 from src.agent.memory.memory_candidate import MemoryCandidate
 from src.agent.memory.memory_validator import MemoryValidator
-from src.agent.runtime.action_result import ActionResult
+from src.agent.execution.action_result import ActionResult
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 from src.services.user_profile_service import UserProfileService
@@ -142,7 +142,7 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
         self.assertEqual(result.safety_review.decision, "revise")  # type: ignore[union-attr]
         self.assertEqual({action.type for action in result.actions}, {"display"})
 
-    def test_response_writer_removes_false_preference_commitment(self) -> None:
+    def test_response_writer_does_not_replace_text_by_keyword(self) -> None:
         llm = ScriptedLLM(
             {
                 "situation_analyst": _json(summary="User asks for fewer reminders.", should_respond=True),
@@ -169,8 +169,7 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
         )
 
         visible_texts = [str(action.payload.get("text", "")) for action in result.actions if action.type in {"speak", "display"}]
-        self.assertIn("好的，我会尽量少打扰你。", visible_texts)
-        self.assertNotIn("我记住了，以后我都会少提醒你。", visible_texts)
+        self.assertIn("我记住了，以后我都会少提醒你。", visible_texts)
 
     def test_memory_extraction_and_consolidation(self) -> None:
         store = LongTermMemoryStore(self.root / "memory.json")
@@ -649,7 +648,8 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
 
         guidance = context.to_prompt_dict()["personalization_guidance"]
         self.assertTrue(guidance["relevant_long_term_memory"])
-        self.assertTrue(any("gentle" in hint or "settings" in hint for hint in guidance["response_style_hints"]))
+        preferences = guidance["explicit_user_preferences"]
+        self.assertTrue(any("温和" in str(item) or "低频率" in str(item) for item in guidance["relevant_long_term_memory"]))
 
     def test_process_actions_observes_action_result_outcome(self) -> None:
         llm = CapturingLLM(
@@ -781,6 +781,64 @@ class LLMCenteredArchitectureTestCase(unittest.TestCase):
 
         self.assertEqual(personal_context.active_constraints[0]["content"], "Do not speak during silent mode.")
 
+    def test_memory_pipeline_reads_observer_prompt_file(self) -> None:
+        from pathlib import Path
+        from src.agent.prompt_io import prompt_path, read_prompt
+
+        _prompts = Path(__file__).resolve().parents[1] / "src" / "agent" / "memory" / "prompts"
+        observer_path = prompt_path(_prompts, "memory_observer.md")
+        content = read_prompt(observer_path)
+        self.assertIn("MemoryObserver", content)
+        self.assertIn("worth_remembering", content)
+        self.assertIn("durable", content.lower())
+        self.assertTrue(observer_path.exists())
+
+    def test_memory_pipeline_reads_extractor_prompt_file(self) -> None:
+        from pathlib import Path
+        from src.agent.prompt_io import prompt_path, read_prompt
+
+        _prompts = Path(__file__).resolve().parents[1] / "src" / "agent" / "memory" / "prompts"
+        extractor_path = prompt_path(_prompts, "memory_extractor.md")
+        content = read_prompt(extractor_path)
+        self.assertIn("MemoryExtractor", content)
+        self.assertIn("behavior_preference", content)
+        self.assertIn("preference_key", content)
+        self.assertTrue(extractor_path.exists())
+
+    def test_memory_pipeline_reads_critic_prompt_file(self) -> None:
+        from pathlib import Path
+        from src.agent.prompt_io import prompt_path, read_prompt
+
+        _prompts = Path(__file__).resolve().parents[1] / "src" / "agent" / "memory" / "prompts"
+        critic_path = prompt_path(_prompts, "memory_critic.md")
+        content = read_prompt(critic_path)
+        self.assertIn("MemoryCritic", content)
+        self.assertIn("approved_indexes", content)
+        self.assertTrue(critic_path.exists())
+
+    def test_memory_pipeline_no_long_inline_prompt_literals(self) -> None:
+        import inspect
+        source = inspect.getsource(long_term_memory_pipeline_module)
+        self.assertNotIn('"Decide whether this interaction may contain durable long-term user memory."', source)
+        self.assertNotIn('"Extract durable long-term memory candidates. Return JSON:"', source)
+        self.assertNotIn('"Review long-term memory candidates. Reject vague, unsupported, profile-only,"', source)
+
+    def test_response_writer_has_no_false_commitment_keyword_filter(self) -> None:
+        import inspect
+        from src.agent.llm_agent.roles import response_writer as rw_module
+
+        source = inspect.getsource(rw_module)
+        self.assertNotIn("_contains_false_commitment", source)
+        self.assertNotIn("_remove_false_preference_commitments", source)
+        self.assertNotIn("_has_persistent_preference_update", source)
+        self.assertNotIn("forbidden", source)
+
+    def test_response_writer_prompt_contains_no_false_commitment_rule(self) -> None:
+        from pathlib import Path
+        prompt_path = Path(__file__).resolve().parents[1] / "src" / "agent" / "llm_agent" / "prompts" / "response_writer.md"
+        content = prompt_path.read_text(encoding="utf-8")
+        self.assertIn("我已经记住", content)
+        self.assertIn("profile or persistent preference", content.lower())
 
 def _json(**values: object) -> str:
     payload = {

@@ -1,8 +1,8 @@
-# Runtime
+# Execution
 
 ## 职责
 
-`runtime/` 负责 Agent 的运行时闭环、动作结果、内部事件回流和 trace。
+`execution/` 负责 Agent 的动作执行、闭环、结果回流和 trace。
 
 ## 不负责什么
 
@@ -15,7 +15,7 @@
 - `action_result.py`：动作执行结果模型。
 - `internal_events.py`：把动作结果转成内部 Event。
 - `trace.py`：调试 trace 数据结构。
-- `autonomy.py`：构造自主检查事件。
+- `autonomous_tick.py`：构造自主检查事件。
 
 ## 上游和下游
 

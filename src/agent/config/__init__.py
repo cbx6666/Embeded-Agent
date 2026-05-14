@@ -12,7 +12,7 @@ from src.agent.config.policy_config import (
     GuardPolicyConfig,
     RuntimeHistoryPolicyConfig,
 )
-from src.agent.config.retrieval_policy import RetrievalPolicyConfig
+from src.agent.config.policy_config import RetrievalPolicyConfig
 
 __all__ = [
     "ActionPolicyConfig",

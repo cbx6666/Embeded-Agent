@@ -22,7 +22,7 @@ LongTermMemoryStore 或 UserProfileStore。
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.agent.config.retrieval_policy import RetrievalPolicyConfig
+from src.agent.config.policy_config import RetrievalPolicyConfig
 
 
 DEFAULT_RETRIEVAL_POLICY = RetrievalPolicyConfig()

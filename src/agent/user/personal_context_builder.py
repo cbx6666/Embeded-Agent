@@ -18,10 +18,9 @@ DecisionPipeline 只接收 PersonalContext，不直接读取 LongTermMemoryStore
 UserProfileStore。
 """
 
-from dataclasses import replace
 from typing import Any
 
-from src.agent.config.policy_config import ContextPolicyConfig
+from src.agent.config.policy_config import ContextPolicyConfig, RetrievalPolicyConfig
 from src.agent.user.personal_context import PersonalContext
 from src.agent.event import Event
 from src.agent.memory.long_term_memory import LongTermMemory
@@ -39,35 +38,69 @@ class PersonalContextBuilder:
         long_term_memory_store: LongTermMemoryStore | None = None,
         user_profile_service: UserProfileService | None = None,
         policy_config: ContextPolicyConfig | None = None,
-        max_recent_messages: int | None = None,
-        max_recent_events: int | None = None,
-        max_recent_actions: int | None = None,
-        max_long_term_items: int | None = None,
-        uncertain_confidence_threshold: float | None = None,
-        max_memory_items_per_bucket: int | None = None,
+        retrieval_policy: RetrievalPolicyConfig | None = None,
     ) -> None:
         self.long_term_memory_store = long_term_memory_store or LongTermMemoryStore()
         self.user_profile_service = user_profile_service
-        config = policy_config or ContextPolicyConfig()
-        if max_recent_messages is not None:
-            config = replace(config, max_recent_messages=max_recent_messages)
-        if max_recent_events is not None:
-            config = replace(config, max_recent_events=max_recent_events)
-        if max_recent_actions is not None:
-            config = replace(config, max_recent_actions=max_recent_actions)
-        if uncertain_confidence_threshold is not None:
-            config = replace(config, uncertain_confidence_threshold=uncertain_confidence_threshold)
-        if max_memory_items_per_bucket is not None:
-            config = replace(config, max_memory_items_per_bucket=max_memory_items_per_bucket)
-        if max_long_term_items is not None:
-            per_bucket = max(0, max_long_term_items // 5)
-            config = replace(config, max_memory_items_per_bucket=per_bucket)
-        self.policy_config = config
-        self.max_recent_messages = config.max_recent_messages
-        self.max_recent_events = config.max_recent_events
-        self.max_recent_actions = config.max_recent_actions
-        self.uncertain_confidence_threshold = config.uncertain_confidence_threshold
-        self.max_memory_items_per_bucket = config.max_memory_items_per_bucket
+        self.policy_config = policy_config or ContextPolicyConfig()
+        self.retrieval_policy = retrieval_policy or RetrievalPolicyConfig()
+
+    def _get_profile(self, user_id: str) -> dict[str, Any]:
+        """读取用户显式画像；未配置 UserProfileService 时返回空字典。"""
+        if self.user_profile_service is not None:
+            return self.user_profile_service.profile_context(user_id)
+        return {}
+
+    def _collect_memory_items(
+        self,
+        memories: list[LongTermMemory],
+        profile_values: dict[str, str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """渲染长期记忆，做冲突检测和置信度过滤，分入 bucket。"""
+        buckets: dict[str, list[dict[str, Any]]] = {
+            "behavior_preference": [],
+            "behavior_pattern": [],
+            "interaction_style": [],
+            "active_constraint": [],
+            "uncertain": [],
+        }
+        threshold = self.policy_config.uncertain_confidence_threshold
+        for memory in sorted(memories, key=_memory_sort_key, reverse=True):
+            rendered = _render_memory(
+                memory,
+                confidence_weight=self.retrieval_policy.memory_priority_confidence_weight,
+                evidence_weight=self.retrieval_policy.memory_priority_evidence_weight,
+                max_evidence=self.retrieval_policy.memory_priority_max_evidence,
+            )
+            conflict = _profile_conflict(memory, profile_values)
+            if conflict:
+                rendered["conflict_with"] = conflict
+                rendered["conflict_policy"] = "UserProfile wins; LongTermMemory is kept as uncertain evidence."
+                buckets["uncertain"].append(rendered)
+                continue
+
+            effective_confidence = float(rendered["effective_confidence"])
+            if effective_confidence < threshold or memory.memory_type == "uncertain":
+                buckets["uncertain"].append(rendered)
+            elif memory.memory_type in buckets:
+                buckets[memory.memory_type].append(rendered)
+            else:
+                buckets["uncertain"].append(rendered)
+        return buckets
+
+    def _build_runtime_snapshot(self, state: AgentState) -> dict[str, Any]:
+        """从 AgentState.runtime_history 提取裁剪后的短期窗口快照。"""
+        history = state.runtime_history
+        recent_events = _decision_recent_events(history.recent_events, self.policy_config)
+        cfg = self.policy_config
+        return {
+            "recent_events": list(recent_events[-cfg.max_recent_events :]),
+            "recent_messages": list(history.recent_messages[-cfg.max_recent_messages :]),
+            "recent_actions": list(history.recent_actions[-cfg.max_recent_actions :]),
+            "attention_summary": list(history.attention_records[-cfg.max_recent_events :]),
+            "environment_summary": list(history.environment_records[-cfg.max_recent_events :]),
+            "emotion_summaries": list(history.emotion_summaries[-cfg.max_recent_events :]),
+        }
 
     def build(
         self,
@@ -80,53 +113,18 @@ class PersonalContextBuilder:
 
         now = int(event.timestamp) if event is not None else None
         memories = self.long_term_memory_store.list(user_id, now=now)
-        profile = (
-            self.user_profile_service.profile_context(user_id)
-            if self.user_profile_service is not None
-            else {}
-        )
+        profile = self._get_profile(user_id)
         profile_values = _profile_value_index(profile)
         profile_items = _profile_items(profile)
 
-        buckets: dict[str, list[dict[str, Any]]] = {
-            "behavior_preference": [],
-            "behavior_pattern": [],
-            "interaction_style": [],
-            "active_constraint": [],
-            "uncertain": [],
-        }
-        for memory in sorted(memories, key=_memory_sort_key, reverse=True):
-            rendered = _render_memory(memory)
-            conflict = _profile_conflict(memory, profile_values)
-            if conflict:
-                rendered["conflict_with"] = conflict
-                rendered["conflict_policy"] = "UserProfile wins; LongTermMemory is kept as uncertain evidence."
-                buckets["uncertain"].append(rendered)
-                continue
-
-            effective_confidence = float(rendered["effective_confidence"])
-            if effective_confidence < self.uncertain_confidence_threshold or memory.memory_type == "uncertain":
-                buckets["uncertain"].append(rendered)
-            elif memory.memory_type in buckets:
-                buckets[memory.memory_type].append(rendered)
-            else:
-                buckets["uncertain"].append(rendered)
+        buckets = self._collect_memory_items(memories, profile_values)
 
         compressed_buckets, compression = _compress_buckets(
             buckets,
-            max_items_per_bucket=self.max_memory_items_per_bucket,
+            max_items_per_bucket=self.policy_config.max_memory_items_per_bucket,
         )
 
-        history = state.runtime_history
-        recent_events = _decision_recent_events(history.recent_events)
-        runtime_history = {
-            "recent_events": list(recent_events[-self.max_recent_events :]),
-            "recent_messages": list(history.recent_messages[-self.max_recent_messages :]),
-            "recent_actions": list(history.recent_actions[-self.max_recent_actions :]),
-            "attention_summary": list(history.attention_records[-self.max_recent_events :]),
-            "environment_summary": list(history.environment_records[-self.max_recent_events :]),
-            "emotion_summaries": list(history.emotion_summaries[-self.max_recent_events :]),
-        }
+        runtime_history = self._build_runtime_snapshot(state)
         runtime_items = _runtime_items(runtime_history)
 
         return PersonalContext(
@@ -153,7 +151,13 @@ class PersonalContextBuilder:
         )
 
 
-def _render_memory(memory: LongTermMemory) -> dict[str, Any]:
+def _render_memory(
+    memory: LongTermMemory,
+    *,
+    confidence_weight: float,
+    evidence_weight: float,
+    max_evidence: int,
+) -> dict[str, Any]:
     """把 LongTermMemory 渲染成 prompt 安全摘要，不暴露仓库内部实现。"""
 
     effective_confidence = round(memory.confidence * memory.decay, 4)
@@ -173,7 +177,9 @@ def _render_memory(memory: LongTermMemory) -> dict[str, Any]:
         "evidence_count": len(memory.evidence),
         "decay": memory.decay,
         "source": "LongTermMemory",
-        "priority_score": round(effective_confidence * 20 + min(5, len(memory.evidence)) * 1.5, 4),
+        "priority_score": round(
+            effective_confidence * confidence_weight + min(max_evidence, len(memory.evidence)) * evidence_weight, 4
+        ),
         "tags": tags,
         "preference_key": preference_key,
         "preference_value": preference_value,
@@ -321,14 +327,14 @@ def _runtime_items(runtime_history: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
-def _decision_recent_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [event for event in events if not _is_noisy_runtime_event(event)]
+def _decision_recent_events(events: list[dict[str, Any]], policy: ContextPolicyConfig) -> list[dict[str, Any]]:
+    return [event for event in events if not _is_noisy_runtime_event(event, policy)]
 
 
-def _is_noisy_runtime_event(event: dict[str, Any]) -> bool:
+def _is_noisy_runtime_event(event: dict[str, Any], policy: ContextPolicyConfig) -> bool:
     event_type = str(event.get("type", "")).strip()
-    if event_type in {"timer_ticked", "agent_response_completed", "focus_timer_started", "focus_timer_stopped"}:
+    if event_type in policy.noisy_runtime_event_types:
         return True
     payload = event.get("payload", {})
     trigger = str(payload.get("trigger", "")).strip() if isinstance(payload, dict) else ""
-    return trigger in {"agent_response_completed", "focus_timer_started", "focus_timer_stopped", "timer_ticked"}
+    return trigger in policy.noisy_runtime_trigger_types

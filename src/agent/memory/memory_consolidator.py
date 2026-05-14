@@ -19,15 +19,22 @@ Consolidator 可以读取已有 LongTermMemory 摘要并调用 LLM，但输出�
 """
 
 import json
+from pathlib import Path
 from typing import Any
 
+from src.agent.prompt_io import prompt_path, read_prompt
 from src.agent.memory.long_term_memory import LongTermMemory
 from src.agent.memory.memory_candidate import MemoryCandidate
 from src.services.llm_service import LLMService
 
+_PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+
 
 class MemoryConsolidator:
     """封装长期记忆 consolidate 阶段。"""
+
+    def __init__(self, prompt_path_override: Path | None = None) -> None:
+        self.prompt_path = prompt_path_override or prompt_path(_PROMPTS_DIR, "memory_consolidator.md")
 
     def consolidate(
         self,
@@ -41,9 +48,8 @@ class MemoryConsolidator:
         if not candidates:
             return [], {"skipped": True}
         prompt = (
-            "Consolidate durable long-term memory candidates with existing memories. "
-            "Return JSON: {\"candidates\":[...]} using the same candidate schema. "
-            "Do not create UserProfile fields. Keep explicit profile facts out of memory.\n"
+            f"{read_prompt(self.prompt_path)}\n\n"
+            f"Existing and New Candidates JSON:\n"
             + json.dumps(
                 {
                     "existing": [item.to_dict() for item in existing[-20:]],
