@@ -10,9 +10,9 @@ from src.adapters.mock_input import parse_mock_command
 from src.agent.core import AgentCore
 from src.agent.decision.decision_result import DecisionResult
 from src.agent.decision.intent_model import AgentIntent
-from src.agent.runtime.action_result import ActionResult
+from src.agent.execution.action_result import ActionResult
 from src.agent_lab import _format_trace, _is_unknown_slash_command, _show_last_decision, build_scenario_events
-from src.agent.runtime.trace import AgentDecisionTrace
+from src.agent.execution.trace import AgentDecisionTrace
 from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.storage.json_store import JsonStore

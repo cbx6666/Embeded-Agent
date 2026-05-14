@@ -15,8 +15,11 @@ from pathlib import Path
 
 from src.agent.decision.intent_model import IntentPlan, REGISTERED_INTENT_TYPES
 from src.agent.decision.agent_context_builder import AgentContext
+from src.agent.prompt_io import prompt_path, read_prompt
 from src.agent.llm_agent.schemas import SituationFrame, fallback_plan_for_event, parse_json_object
 from src.services.llm_service import LLMService
+
+_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 
 
 class IntentPlanner:
@@ -28,8 +31,8 @@ class IntentPlanner:
 
     role_name = "intent_planner"
 
-    def __init__(self, prompt_path: Path | None = None) -> None:
-        self.prompt_path = prompt_path or _prompt_path("intent_planner.md")
+    def __init__(self, prompt_path_override: Path | None = None) -> None:
+        self.prompt_path = prompt_path_override or prompt_path(_PROMPTS_DIR, "intent_planner.md")
 
     def plan(
         self,
@@ -44,7 +47,7 @@ class IntentPlanner:
         """
 
         prompt = (
-            f"{_read_prompt(self.prompt_path)}\n\n"
+            f"{read_prompt(self.prompt_path)}\n\n"
             f"Registered intent types: {sorted(REGISTERED_INTENT_TYPES)}\n\n"
             f"SituationFrame JSON:\n{situation.to_dict()}\n\n"
             f"Context JSON:\n{context.to_prompt_json()}"
@@ -56,18 +59,3 @@ class IntentPlanner:
         except Exception as exc:
             plan = fallback_plan_for_event(context.event_type, context.user_text)
             return plan, {"fallback": True, "error": str(exc)}
-
-
-def _prompt_path(name: str) -> Path:
-    """定位本角色 prompt 文件。"""
-
-    return Path(__file__).resolve().parents[1] / "prompts" / name
-
-
-def _read_prompt(path: Path) -> str:
-    """读取 prompt；缺失时使用严格 JSON 的最小兜底提示。"""
-
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return "Return strict JSON for the requested role."

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-"""Agent 自主化验证终端。"""
+"""Agent 自主化验证终端。
+
+DEV/DEMO TOOL ONLY — 本模块是开发和演示用的交互式验证终端，不参与生产链路。
+生产入口是 src/main.py，生产调度是 src/agent/core.py。
+
+这里的所有 /mock、/scenario、/auto 命令仅用于本地开发验证，不会被生产代码调用。
+mock 输入适配器 (src/adapters/mock_input.py) 同样是开发辅助工具。
+"""
 
 import argparse
 import json
@@ -20,8 +27,8 @@ from src.adapters.mock_input import parse_mock_command
 from src.adapters.profile_cli import handle_profile_command
 from src.agent.core import AgentCore, build_default_core
 from src.agent.event import Event
-from src.agent.runtime.autonomy import build_autonomous_check_event
-from src.agent.runtime.loop import AgentLoop
+from src.agent.execution.autonomous_tick import build_autonomous_check_event
+from src.agent.execution.loop import AgentLoop
 
 LAB_HELP_TEXT = """可用命令：
   普通文本：
@@ -95,7 +102,11 @@ SCENARIO_DESCRIPTIONS = {
 
 
 def build_scenario_events(name: str, start_ts: int | None = None) -> list[tuple[str, Event]]:
-    """构造内置验证场景对应的一组事件序列。"""
+    """构造内置验证场景对应的一组事件序列。
+
+    仅用于开发验证终端 (/scenario 命令)，不是生产事件源。
+    事件 payload 中的 source="lab" 标记了其开发工具来源。
+    """
     base_ts = int(start_ts or time.time())
     if name == "focus_fatigue_rest":
         return [

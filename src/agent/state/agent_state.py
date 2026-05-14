@@ -11,7 +11,7 @@
 
 from dataclasses import asdict, dataclass, field, fields
 
-from src.agent.history.runtime_history import RuntimeHistory
+from src.agent.state.runtime_history import RuntimeHistory
 from src.agent.state.cooldown_state import CooldownState
 from src.agent.state.environment_state import EnvironmentState
 from src.agent.state.focus_state import FocusState

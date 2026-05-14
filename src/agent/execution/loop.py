@@ -8,8 +8,8 @@ from typing import Any
 from src.agent.action import Action
 from src.agent.core import AgentCore
 from src.agent.event import Event
-from src.agent.runtime.internal_events import build_internal_events_from_results
-from src.agent.runtime.trace import AgentDecisionTrace
+from src.agent.execution.internal_events import build_internal_events_from_results
+from src.agent.execution.trace import AgentDecisionTrace
 
 
 class AgentLoop:

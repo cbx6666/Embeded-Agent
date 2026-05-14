@@ -9,10 +9,10 @@ from src.adapters.console_output import ConsoleOutput
 from src.agent.action import Action
 from src.agent.core import AgentCore
 from src.agent.event import Event
-from src.agent.runtime.action_result import ActionResult
-from src.agent.runtime.autonomy import build_autonomous_check_event
-from src.agent.runtime.internal_events import build_internal_events_from_results
-from src.agent.runtime.loop import AgentLoop
+from src.agent.execution.action_result import ActionResult
+from src.agent.execution.autonomous_tick import build_autonomous_check_event
+from src.agent.execution.internal_events import build_internal_events_from_results
+from src.agent.execution.loop import AgentLoop
 from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.storage.json_store import JsonStore
@@ -199,7 +199,7 @@ class AgentLoopTestCase(unittest.TestCase):
             payload={"trigger": "agent_response_completed", "source": "test"},
         )
 
-        with patch("src.agent.runtime.loop.build_internal_events_from_results", return_value=[forced_event]):
+        with patch("src.agent.execution.loop.build_internal_events_from_results", return_value=[forced_event]):
             actions = loop.run_once(
                 Event(type="user_text_input", timestamp=10000, payload={"text": "hello", "source": "test"})
             )
