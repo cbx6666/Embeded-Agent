@@ -16,7 +16,7 @@
 
 ## 上游和下游
 
-上游是 `decision/action_realizer.py`。下游是 `runtime/device_adapter.py` 和具体 adapters。
+上游是 `decision/action_realizer.py`。下游是 `execution/device_adapter.py` 和具体 adapters。
 
 ## 扩展方式
 

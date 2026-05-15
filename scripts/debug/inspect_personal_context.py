@@ -21,9 +21,9 @@ from src.storage.user_profile_store import UserProfileStore
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect PersonalContext and retrieval for one user/event.")
-    parser.add_argument("--state", default="data/runtime_store.json", help="Runtime state JSON.")
-    parser.add_argument("--memory", default="data/long_term_memory.json", help="Long-term memory JSON.")
-    parser.add_argument("--profiles", default="data/user_profiles.json", help="User profile JSON.")
+    parser.add_argument("--state", default="data/runtime/runtime_store.json", help="Runtime state JSON.")
+    parser.add_argument("--memory", default="data/memory/long_term_memory.json", help="Long-term memory JSON.")
+    parser.add_argument("--profiles", default="data/user/user_profiles.json", help="User profile JSON.")
     parser.add_argument("--user", default="default", help="User id.")
     parser.add_argument("--event-type", default="user_text_input", help="Event type for retrieval scoring.")
     parser.add_argument("--text", default="", help="Text query for retrieval.")

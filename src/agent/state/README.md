@@ -12,6 +12,8 @@
 - `focus_state.py`：专注计时状态。
 - `interaction_state.py`：对话与交互状态。
 - `environment_state.py`：环境传感器状态。
+- `cooldown_state.py`：提醒和通知类动作的冷却时间记录。
+- `runtime_history.py`：短期运行窗口。
 
 短期历史模型 `RuntimeHistory` 在本目录 `agent/state/runtime_history.py`；显式用户画像模型在
 `agent/user/user_profile.py`。

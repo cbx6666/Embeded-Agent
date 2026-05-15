@@ -12,6 +12,8 @@
 `agent/user/` 只保留用户认知层的模型和上下文构建器。
 
 `PersonalContextBuilder` 只读各来源并做冲突处理、优先级融合和 prompt 压缩，不直接写入 store。
+`PersonalContext.retrieve_relevant()` 默认返回兼容旧调用的 `list[dict]`；调试和实验使用
+`retrieve_relevant_with_scores()` / `explain_retrieval()` 查看 deterministic score breakdown。
 
 ## 关于 PersonalContext 的位置
 

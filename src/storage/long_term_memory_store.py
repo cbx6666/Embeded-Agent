@@ -32,7 +32,7 @@ from src.agent.memory.memory_candidate import MemoryCandidate
 class LongTermMemoryStore:
     """JSON 文件形式的长期记忆仓库。"""
 
-    def __init__(self, path: str | Path = "data/long_term_memory.json") -> None:
+    def __init__(self, path: str | Path = "data/memory/long_term_memory.json") -> None:
         self.path = Path(path)
 
     def list(

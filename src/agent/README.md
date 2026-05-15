@@ -2,7 +2,7 @@
 
 `agent/` 是嵌入式 Agent 的主领域包，主链路为：
 
-`Event -> RuntimeHistory -> LongTermMemoryPipeline -> PersonalContextBuilder -> DecisionPipeline -> Action`
+`Event -> Reducer -> RuntimeHistoryService -> LongTermMemoryPipeline -> PersonalContextBuilder -> DecisionPipeline -> Action -> ActionResult -> RuntimeTrace`
 
 核心边界：
 
@@ -10,6 +10,7 @@
 - `memory/`：系统从长期交互中学习到的可证据化长期记忆。
 - `user/`：用户认知层，包含静态显式 `UserProfile` 和动态决策快照 `PersonalContext`。
 - `decision/`：只消费 `PersonalContext`，不直接读取任何 store。
+- `execution/`：执行 `Action`、记录 `ActionResult` 和轻量 `RuntimeTrace`。
 
 Authoritative Source：
 

@@ -2,7 +2,7 @@
 
 ## 职责
 
-`execution/` 负责 Agent 的动作执行、闭环、结果回流和 trace。
+`execution/` 负责 Agent 的动作执行、闭环、结果回流和轻量 `RuntimeTrace`。
 
 ## 不负责什么
 
@@ -19,7 +19,7 @@
 
 ## 上游和下游
 
-上游是 AgentCore 和设备执行结果。下游是内部 Event 队列、CLI trace 和测试。
+上游是 AgentCore 和设备执行结果。下游是内部 Event 队列、debug trace、replay 和测试。
 
 ## 扩展方式
 

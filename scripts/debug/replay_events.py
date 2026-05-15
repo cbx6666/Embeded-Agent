@@ -18,7 +18,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Replay an event log through the deterministic experiment runtime.")
     parser.add_argument("events", help="Path to events.json.")
     parser.add_argument("--name", default="debug_replay", help="Output run name.")
-    parser.add_argument("--output-root", default="scripts/debug/output", help="Output root directory.")
+    parser.add_argument("--output-root", default="data/experiments/replay", help="Output root directory.")
     args = parser.parse_args()
 
     events = [_event_from_dict(item) for item in json.loads(Path(args.events).read_text(encoding="utf-8"))]
