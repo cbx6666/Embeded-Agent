@@ -29,12 +29,14 @@ from src.storage.user_profile_store import UserProfileStore
 
 
 def prepare_output_dir(experiment_name: str, output_root: str | Path | None = None) -> Path:
-    base = Path(output_root) if output_root else ROOT / "scripts" / "runtime_experiments" / "output"
+    base = Path(output_root) if output_root else _default_output_base(experiment_name)
     output_dir = base / experiment_name
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "data").mkdir(exist_ok=True)
+    (output_dir / "runtime").mkdir(exist_ok=True)
+    (output_dir / "memory").mkdir(exist_ok=True)
+    (output_dir / "user").mkdir(exist_ok=True)
     return output_dir
 
 
@@ -99,9 +101,9 @@ def build_environment(
     output_root: str | Path | None = None,
 ) -> ExperimentEnvironment:
     output_dir = prepare_output_dir(experiment_name, output_root)
-    memory_store = LongTermMemoryStore(output_dir / "data" / "long_term_memory.json")
+    memory_store = LongTermMemoryStore(output_dir / "memory" / "long_term_memory.json")
     profile_service = UserProfileService(
-        UserProfileStore(output_dir / "data" / "user_profiles.json"),
+        UserProfileStore(output_dir / "user" / "user_profiles.json"),
         now_fn=lambda: 0,
     )
     core = AgentCore(
@@ -109,7 +111,7 @@ def build_environment(
         timer_service=TimerService(background=False),
         runtime_history_service=RuntimeHistoryService(),
         llm_service=llm or ExperimentLLM(),
-        store=JsonStore(output_dir / "data" / "runtime_store.json"),
+        store=JsonStore(output_dir / "runtime" / "runtime_store.json"),
         long_term_memory_pipeline=LongTermMemoryPipeline(memory_store),
         personal_context_builder=PersonalContextBuilder(
             long_term_memory_store=memory_store,
@@ -125,6 +127,12 @@ def build_environment(
         memory_store=memory_store,
         profile_service=profile_service,
     )
+
+
+def _default_output_base(experiment_name: str) -> Path:
+    if "retrieval" in experiment_name:
+        return ROOT / "data" / "experiments" / "retrieval"
+    return ROOT / "data" / "experiments" / "runtime"
 
 
 @dataclass

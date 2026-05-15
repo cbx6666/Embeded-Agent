@@ -4,11 +4,11 @@
 
 `decision/` 是 LLM 输出到设备动作之间的确定性边界。
 
-`AgentRun -> IntentPlanValidator -> DeterministicGuard -> ActionRealizer -> Action`
+`AgentContextBuilder -> LLMAgentOrchestrator -> IntentPlanValidator -> DeterministicGuard -> ActionRealizer -> Action`
 
 ## 不负责什么
 
-本目录不做关键词语义理解，不读取策略 YAML，不维护旧式规划/候选/仲裁/处理器链路，不直接执行硬件。
+本目录不做关键词语义理解，不直接读取 store，不维护旧式规划/候选/仲裁/处理器链路，不直接执行硬件。
 
 ## 核心文件
 
@@ -20,7 +20,7 @@
 
 ## 上游和下游
 
-上游是 `llm_agent/` 输出的 AgentRun。下游是 `runtime/device_adapter.py` 执行的 Action。
+上游是 `AgentCore` 传入的 `Event`、`AgentState`、`PersonalContext` 和 `LLMService`。内部由 `llm_agent/` 输出 `AgentRun`。下游是 `execution/device_adapter.py` 执行的 Action。
 
 ## 扩展方式
 

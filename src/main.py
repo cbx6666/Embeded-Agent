@@ -98,7 +98,7 @@ def main() -> None:
                 wujie_om_device_id=wujie_device_id,
                 emotion_backend=emotion_be,
                 deepface_model=args.deepface_model,
-                state_stats_db_path=state_stats_db or "data/state_stats.db",
+                state_stats_db_path=state_stats_db or "data/runtime/state_stats.db",
             )
             vision_adapter = VisionAffectInputAdapter(core, cfg)
             vision_adapter.start_background()

@@ -187,8 +187,8 @@ def build_scenario_events(name: str, start_ts: int | None = None) -> list[tuple[
 
 def create_runtime(store_path: str | Path, max_steps: int, output: ConsoleOutput) -> tuple[AgentCore, AgentLoop]:
     """创建一套用于终端验证的 AgentCore 与 AgentLoop。"""
-    profile_store_path = Path(store_path).with_name("user_profiles_lab.json")
-    long_term_memory_store_path = Path(store_path).with_name("long_term_memory_lab.json")
+    profile_store_path = Path(store_path).with_name("user_profiles.json")
+    long_term_memory_store_path = Path(store_path).with_name("long_term_memory.json")
     core = build_default_core(
         store_path=store_path,
         profile_store_path=profile_store_path,
@@ -205,7 +205,7 @@ def main() -> None:
     parser.add_argument(
         "--store-path",
         type=str,
-        default=str(PROJECT_ROOT / "data" / "runtime_lab_store.json"),
+        default=str(PROJECT_ROOT / "data" / "experiments" / "lab" / "runtime_store.json"),
         help="验证终端使用的状态存储路径",
     )
     parser.add_argument("--max-steps", type=int, default=5, help="单次闭环最大步数")

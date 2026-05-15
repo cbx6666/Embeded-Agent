@@ -7,7 +7,7 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect LongTermMemoryStore contents.")
-    parser.add_argument("--memory", default="data/long_term_memory.json", help="Path to long-term memory JSON.")
+    parser.add_argument("--memory", default="data/memory/long_term_memory.json", help="Path to long-term memory JSON.")
     parser.add_argument("--user", default=None, help="Optional user_id filter.")
     parser.add_argument("--include-inactive", action="store_true", help="Show contradicted/inactive memories.")
     parser.add_argument("--json", action="store_true", help="Print raw JSON.")

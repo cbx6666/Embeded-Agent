@@ -24,7 +24,7 @@ from typing import Any
 class UserProfileStore:
     """JSON 文件形式的显式用户画像仓库。"""
 
-    def __init__(self, path: str | Path = "data/user_profiles.json") -> None:
+    def __init__(self, path: str | Path = "data/user/user_profiles.json") -> None:
         self.path = Path(path)
 
     def load_profiles(self) -> dict[str, dict[str, Any]]:

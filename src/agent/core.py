@@ -368,9 +368,9 @@ class AgentCore:
 
 
 def build_default_core(
-    store_path: str | Path = "data/runtime_store.json",
-    profile_store_path: str | Path = "data/user_profiles.json",
-    long_term_memory_store_path: str | Path = "data/long_term_memory.json",
+    store_path: str | Path = "data/runtime/runtime_store.json",
+    profile_store_path: str | Path = "data/user/user_profiles.json",
+    long_term_memory_store_path: str | Path = "data/memory/long_term_memory.json",
     timer_background: bool = True,
     output: ConsoleOutput | None = None,
     *,
@@ -417,10 +417,14 @@ def build_default_core(
 
 
 def _default_profile_store_path(store: JsonStore) -> Path:
+    if store.path.parent.name == "runtime":
+        return store.path.parent.parent / "user" / "user_profiles.json"
     return store.path.with_name("user_profiles.json")
 
 
 def _default_long_term_memory_store_path(store: JsonStore) -> Path:
+    if store.path.parent.name == "runtime":
+        return store.path.parent.parent / "memory" / "long_term_memory.json"
     return store.path.with_name("long_term_memory.json")
 
 
