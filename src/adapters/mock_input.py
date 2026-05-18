@@ -42,8 +42,6 @@ def parse_mock_command(command: str) -> Event | None:
         raise ValueError(f"字段 {field_key} 不支持值: {value}")
 
     payload: dict[str, object] = {payload_key: value, "source": "mock"}
-    if field_key == "behavior":
-        payload.setdefault("attention", "idle")
     if field_key == "attention":
         payload.setdefault("behavior", "unknown")
 

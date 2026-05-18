@@ -1,0 +1,57 @@
+{
+  "updated_at": 1778689862,
+  "profiles": {
+    "default": {
+      "info": {
+        "user_id": "default",
+        "display_name": "default",
+        "age": null,
+        "gender": null,
+        "identity": null,
+        "hobbies": [],
+        "created_at": 1778684007.213929,
+        "updated_at": 1778685587.0,
+        "last_seen_at": 1778685587.0
+      },
+      "preference": {
+        "favorite_content_types": [],
+        "favorite_music_styles": [],
+        "disliked_topics": [],
+        "reminder_style": null,
+        "speech_style": null,
+        "tts_voice": null,
+        "tts_speed": null,
+        "tts_volume": null
+      }
+    },
+    "xiaoli": {
+      "info": {
+        "user_id": "xiaoli",
+        "display_name": "小李",
+        "age": 12,
+        "gender": "女",
+        "identity": "小学生",
+        "hobbies": [
+          "画画",
+          "足球"
+        ],
+        "created_at": 1778685674.0,
+        "updated_at": 1778689817.0,
+        "last_seen_at": 1778689817.0
+      },
+      "preference": {
+        "favorite_content_types": [],
+        "favorite_music_styles": [
+          "轻音乐",
+          "古风"
+        ],
+        "disliked_topics": [],
+        "reminder_style": "温和",
+        "speech_style": null,
+        "tts_voice": null,
+        "tts_speed": null,
+        "tts_volume": null
+      }
+    }
+  }
+}

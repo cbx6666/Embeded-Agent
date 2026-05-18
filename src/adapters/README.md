@@ -17,7 +17,7 @@
 - `pet_display.py`：桌宠显示适配器；消费 `display` / `render_pet_expression` / `set_light_state`，并上报 `display_sensor_updated`
 - `voice_adapter.py`：语音输入输出适配器；上报 `speech_recognized`，消费 `speak`
 - `behavior_adapter.py`：行为识别适配器；发出行为线索与行为汇总事件
-- `vision_affect/`：摄像头 + **MediaPipe Face Mesh**；**疲劳** 由 **EAR**（眼部 PERCLOS）与 **MAR**（打哈欠/张口，滑动窗内占比）加权融合后滞回分档；**情绪** 默认 **DeepFace**（`backends/deepface_emotion.py`），可选 RAF-ResNet。模型放在 **`backends/`**，**向上只发** `user_fatigue_updated` / `user_emotion_updated`。**不使用 YOLO**；内核不 import 本包内部实现。
+- `vision_affect/`：摄像头 + **MediaPipe Face Mesh**；**疲劳** 由 **EAR**（眼部 PERCLOS）与 **MAR**（打哈欠/张口，滑动窗内占比）加权融合后滞回分档；**情绪** 默认 **WuJie-OM**，也支持 `wujie-vgg19`、`raf`、`deepface`、`none`。模型和后端放在 **`backends/`**，**向上只发** `user_fatigue_updated` / `user_emotion_updated`。**不使用 YOLO**；内核不 import 本包内部实现。
 
 ## 视觉依赖
 
@@ -26,9 +26,12 @@
 ```bash
 python -m src.main --vision
 python -m src.main --vision --emotion-backend raf --raf-ckpt path/to/raf_resnet18.pth
+python -m src.main --vision --emotion-backend wujie-om --wujie-om path/to/model.om
 ```
 
-- 环境变量 **`EMBED_EMOTION_BACKEND`** 可设 `deepface` / `raf` / `none`（覆盖 `--emotion-backend`）。
+- 环境变量 **`EMBED_EMOTION_BACKEND`** 可设 `wujie-om` / `wujie-vgg19` / `raf` / `deepface` / `none`（覆盖 `--emotion-backend`）。
+- 环境变量 **`WUJIE_OM_MODEL`** 和 **`WUJIE_OM_DEVICE_ID`** 可配置 WuJie-OM 模型路径和 Ascend 设备 ID。
+- 环境变量 **`WUJIE_VGG19_CKPT`** 可配置 WuJie VGG19 checkpoint。
 - 环境变量 **`RAF_RESNET18_CKPT`** 在 RAF 模式下可代替 `--raf-ckpt`。
 
 ## 后续扩展方向

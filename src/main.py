@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
 
 from src.adapters.cli_input import CLIInputAdapter, HELP_TEXT, parse_cli_event
 from src.adapters.console_output import ConsoleOutput
@@ -91,7 +98,7 @@ def main() -> None:
                 wujie_om_device_id=wujie_device_id,
                 emotion_backend=emotion_be,
                 deepface_model=args.deepface_model,
-                state_stats_db_path=state_stats_db or "data/state_stats.db",
+                state_stats_db_path=state_stats_db or "data/runtime/state_stats.db",
             )
             vision_adapter = VisionAffectInputAdapter(core, cfg)
             vision_adapter.start_background()
@@ -169,10 +176,10 @@ def main() -> None:
                 continue
 
             if mock_event is not None:
-                core.handle_event_with_results(mock_event)
+                core.handle_event(mock_event)
                 continue
 
-            core.handle_event_with_results(parse_cli_event(command))
+            core.handle_event(parse_cli_event(command))
     finally:
         if vision_adapter is not None:
             vision_adapter.stop()

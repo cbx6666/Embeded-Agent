@@ -1,50 +1,71 @@
 # Embeded-Agent
 
-Embeded-Agent 是一个面向嵌入式交互场景的事件驱动 Agent 原型工程。  
-当前版本围绕专注辅助、人机交互和状态驱动决策展开，核心目标是建立一条可控、可解释、可扩展的 agent 闭环。
+Embeded-Agent 是一个面向嵌入式交互场景的 LLM-centered Agent Runtime Prototype。当前实现把 LLM 放在语义认知层，把 Python 放在 deterministic runtime boundary：LLM 负责理解、规划、审查、表达和长期记忆候选；runtime 负责 state、validator、guard、store、action、trace 和 replay。
 
-## 核心能力
-
-- 统一建模 `Event / State / Intent / Action`
-- 基于状态机与规则的决策链路
-- 受约束的 LLM 辅助意图判断与文本生成
-- 动作执行结果回流形成闭环
-- 面向专注场景的提醒、计时与状态维护能力
-
-## 项目结构
-
-- `src/agent/`：Agent 核心决策与闭环运行层
-- `src/adapters/`：输入输出适配层
-- `src/services/`：LLM、记忆、计时等服务层
-- `src/storage/`：状态持久化
-- `tests/`：单元测试
-
-## Agent 工作流
-
-系统当前采用如下处理流程：
+## 核心链路
 
 ```text
 Event
--> State 更新
--> 候选 Intent 生成
--> （可选）LLM 辅助意图选择
--> IntentGuard 校验
--> Action 生成
--> Action 执行
--> ActionResult 回流
+-> Reducer
+-> RuntimeHistoryService
+-> LongTermMemoryPipeline
+-> PersonalContextBuilder
+-> AgentContextBuilder
+-> LLMAgentOrchestrator
+-> IntentPlanValidator
+-> DeterministicGuard
+-> ActionRealizer
+-> DeviceAdapter
+-> ActionResult
+-> RuntimeTrace
 ```
 
-该设计确保：
+## 核心能力
 
-- LLM 不直接修改状态
-- LLM 不直接生成动作
-- 规则层始终负责安全边界
-- 闭环具备明确停止条件
+- 统一建模 `Event / State / RuntimeHistory / LongTermMemory / PersonalContext / Intent / Action`。
+- 四角色 LLM Agent：`SituationAnalyst`、`IntentPlanner`、`SafetyCritic`、`ResponseWriter`。
+- 长期记忆管线：observe、extract、critic、consolidate、validate、store。
+- Deterministic boundary：schema validation、registered intent、presence/cooldown guard、action realization、device adapter。
+- 个性化上下文：显式 `UserProfile`、证据化 `LongTermMemory` 和短期 `RuntimeHistory` 收口到 `PersonalContext`。
+- 可观测性：轻量 `RuntimeTrace` 支持 debug print、JSON dump 和测试断言。
+- 长时间运行验证：`tests/scenarios/`、`tests/replay/` 和 `scripts/runtime_experiments/`。
+
+## 项目结构
+
+```text
+src/
+  main.py
+  adapters/
+  agent/
+  services/
+  storage/
+
+tests/
+  scenarios/
+  replay/
+
+scripts/
+  runtime_experiments/
+  debug/
+
+docs/
+  design/
+  integration/
+  requirements/
+  shared/
+```
+
+## 文档入口
+
+- `docs/design/src_architecture_design.md`：当前 `src/` 架构设计文档。
+- `docs/design/storage_layout.md`：本地 `data/` 目录的数据域布局说明。
+- `docs/requirements/agent_requirements.md`：Agent 需求与目标说明。
+- `docs/integration/`：行为、显示、环境、语音、情绪等适配说明。
+- `src/agent/README.md`：Agent 内核目录说明。
 
 ## LLM 配置
 
-当前 `LLMService` 默认支持 DeepSeek 的 OpenAI 兼容接口，并支持从项目根目录 `.env` 读取配置。  
-可参考 [`.env.example`](/d:/Homework/embed/project/.env.example:1)：
+生产 `LLMService` 使用 DeepSeek Chat Completions，并读取 `.env` 或环境变量：
 
 ```env
 DEEPSEEK_API_KEY=your_deepseek_api_key
@@ -52,17 +73,46 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
-如果未配置密钥，系统会自动回退到本地 mock 逻辑，以保证测试和离线开发可继续进行。
+未配置 API 时，生产链路会抛出配置错误。测试和实验通过显式 fake/double 提供 deterministic LLM 行为，不由 `LLMService` 内置 mock。
 
 ## 运行
 
-- 基础 CLI：`python -m src.main`
-- 自主化验证终端：`python -m src.agent_lab`
+```bash
+python -m src.main
+```
+
+可选视觉适配器：
+
+```bash
+python -m src.main --vision
+```
 
 ## 测试
 
-当前测试可通过以下命令执行：
+```bash
+python -m pytest -q
+```
+
+## 运行实验
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py" -q
+python scripts/runtime_experiments/study_session_experiment.py
+python scripts/runtime_experiments/long_term_memory_experiment.py
+python scripts/runtime_experiments/multi_user_isolation_experiment.py
+python scripts/runtime_experiments/hallucination_resistance_experiment.py
+python scripts/runtime_experiments/retrieval_quality_experiment.py
+```
+
+实验输出默认写入：
+
+- runtime experiments：`data/experiments/runtime/`
+- retrieval experiment：`data/experiments/retrieval/`
+
+## Debug CLI
+
+```bash
+python scripts/debug/inspect_memory.py --memory data/memory/long_term_memory.json
+python scripts/debug/inspect_personal_context.py --user default --text "gentle reminder"
+python scripts/debug/inspect_trace.py data/experiments/runtime/study_session_experiment/trace_logs.json
+python scripts/debug/replay_events.py data/experiments/runtime/study_session_experiment/events.json
 ```

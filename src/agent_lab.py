@@ -1,11 +1,25 @@
 from __future__ import annotations
 
-"""Agent 自主化验证终端。"""
+"""Agent 自主化验证终端。
+
+DEV/DEMO TOOL ONLY — 本模块是开发和演示用的交互式验证终端，不参与生产链路。
+生产入口是 src/main.py，生产调度是 src/agent/core.py。
+
+这里的所有 /mock、/scenario、/auto 命令仅用于本地开发验证，不会被生产代码调用。
+mock 输入适配器 (src/adapters/mock_input.py) 同样是开发辅助工具。
+"""
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+if __package__ in {None, ""}:
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.adapters.cli_input import CLIInputAdapter, parse_cli_event
 from src.adapters.console_output import ConsoleOutput
@@ -13,8 +27,8 @@ from src.adapters.mock_input import parse_mock_command
 from src.adapters.profile_cli import handle_profile_command
 from src.agent.core import AgentCore, build_default_core
 from src.agent.event import Event
-from src.agent.runtime.autonomy import build_autonomous_check_event
-from src.agent.runtime.loop import AgentLoop
+from src.agent.execution.autonomous_tick import build_autonomous_check_event
+from src.agent.execution.loop import AgentLoop
 
 LAB_HELP_TEXT = """可用命令：
   普通文本：
@@ -73,6 +87,7 @@ LAB_HELP_TEXT = """可用命令：
     /trace
     /trace 5
     /last
+    /last_raw
     /reset
     /help
     /exit
@@ -87,7 +102,11 @@ SCENARIO_DESCRIPTIONS = {
 
 
 def build_scenario_events(name: str, start_ts: int | None = None) -> list[tuple[str, Event]]:
-    """构造内置验证场景对应的一组事件序列。"""
+    """构造内置验证场景对应的一组事件序列。
+
+    仅用于开发验证终端 (/scenario 命令)，不是生产事件源。
+    事件 payload 中的 source="lab" 标记了其开发工具来源。
+    """
     base_ts = int(start_ts or time.time())
     if name == "focus_fatigue_rest":
         return [
@@ -168,12 +187,12 @@ def build_scenario_events(name: str, start_ts: int | None = None) -> list[tuple[
 
 def create_runtime(store_path: str | Path, max_steps: int, output: ConsoleOutput) -> tuple[AgentCore, AgentLoop]:
     """创建一套用于终端验证的 AgentCore 与 AgentLoop。"""
-    profile_store_path = Path(store_path).with_name("user_profiles_lab.json")
-    behavior_store_path = Path(store_path).with_name("behavior_stats_lab.json")
+    profile_store_path = Path(store_path).with_name("user_profiles.json")
+    long_term_memory_store_path = Path(store_path).with_name("long_term_memory.json")
     core = build_default_core(
         store_path=store_path,
         profile_store_path=profile_store_path,
-        behavior_store_path=behavior_store_path,
+        long_term_memory_store_path=long_term_memory_store_path,
         output=output,
     )
     loop = AgentLoop(core, max_steps=max_steps)
@@ -183,7 +202,12 @@ def create_runtime(store_path: str | Path, max_steps: int, output: ConsoleOutput
 def main() -> None:
     """启动交互式自主化验证终端。"""
     parser = argparse.ArgumentParser(description="Embeded-Agent 验证终端")
-    parser.add_argument("--store-path", type=str, default="data/runtime_lab_store.json", help="验证终端使用的状态存储路径")
+    parser.add_argument(
+        "--store-path",
+        type=str,
+        default=str(PROJECT_ROOT / "data" / "experiments" / "lab" / "runtime_store.json"),
+        help="验证终端使用的状态存储路径",
+    )
     parser.add_argument("--max-steps", type=int, default=5, help="单次闭环最大步数")
     args = parser.parse_args()
 
@@ -224,6 +248,9 @@ def main() -> None:
             if command == "/last":
                 _show_last_decision(output, core)
                 continue
+            if command == "/last_raw":
+                _show_last_decision(output, core, raw=True)
+                continue
             if command == "/reset":
                 core.shutdown()
                 if store_path.exists():
@@ -241,6 +268,10 @@ def main() -> None:
             if command.startswith("/scenario "):
                 scenario_name = command.split(maxsplit=1)[1].strip()
                 _run_scenario(loop, output, scenario_name)
+                continue
+
+            if _is_unknown_slash_command(command):
+                output.show_text(f"[Error] unknown command: {command}. 输入 /help 查看命令。")
                 continue
 
             try:
@@ -271,6 +302,12 @@ def _run_scenario(loop: AgentLoop, output: ConsoleOutput, scenario_name: str) ->
     for index, (label, event) in enumerate(events, start=1):
         _run_event(loop, output, event, title=f"场景步骤 {index}: {label}")
     output.show_text(f"场景验证结束: {scenario_name}")
+
+
+def _is_unknown_slash_command(command: str) -> bool:
+    """未知斜杠命令不进入 LLM；普通自然语言仍继续解析为 user_text_input。"""
+
+    return command.startswith("/") and not command.startswith("/mock ")
 
 
 def _run_event(loop: AgentLoop, output: ConsoleOutput, event: Event, *, title: str) -> None:
@@ -340,13 +377,16 @@ def _show_recent_traces(output: ConsoleOutput, loop: AgentLoop, command: str) ->
         output.show_text(_format_trace(trace))
 
 
-def _show_last_decision(output: ConsoleOutput, core: AgentCore) -> None:
+def _show_last_decision(output: ConsoleOutput, core: AgentCore, *, raw: bool = False) -> None:
     """输出最近一轮的 intents 和 action results。"""
-    if not core.last_intents and not core.last_action_results:
+    decision = core.last_decision_result if raw else core.last_effective_decision_result
+    results = core.last_action_results if raw else core.last_effective_action_results
+    label = "Last raw" if raw else "Last effective"
+    if decision is None and not results:
         output.show_text("当前还没有最近决策记录。")
         return
     output.show_text(
-        "[Last intents] "
+        f"[{label} intents] "
         + json.dumps(
             [
                 {
@@ -356,13 +396,13 @@ def _show_last_decision(output: ConsoleOutput, core: AgentCore) -> None:
                     "payload": intent.payload,
                     "requires_llm": intent.requires_llm,
                 }
-                for intent in core.last_intents
+                for intent in (decision.intents if decision is not None else [])
             ],
             ensure_ascii=False,
         )
     )
     output.show_text(
-        "[Last results] "
+        f"[{label} results] "
         + json.dumps(
             [
                 {
@@ -371,7 +411,7 @@ def _show_last_decision(output: ConsoleOutput, core: AgentCore) -> None:
                     "reason": result.reason,
                     "payload": result.payload,
                 }
-                for result in core.last_action_results
+                for result in results
             ],
             ensure_ascii=False,
         )

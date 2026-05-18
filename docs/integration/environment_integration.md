@@ -27,7 +27,7 @@
 说明：
 
 - 环境模块是感知模块，只负责发 Event。
-- 如果内核决定做环境提醒，应转成显示、语音、灯光模块各自的能力 Action。
+- 如果 `DecisionPipeline` 决定做环境提醒，应由 `ActionRealizer` 转成显示、语音、灯光模块各自的能力 Action。
 
 ## Adapter
 
