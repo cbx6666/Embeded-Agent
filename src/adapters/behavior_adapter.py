@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from src.agent.event.factories import (
+from src.agent.event.event_builders import (
     make_behavior_attention_event,
     make_behavior_presence_event,
 )
@@ -52,7 +52,7 @@ class BehaviorAdapter:
             timestamp=timestamp,
         )
         try:
-            self.core.handle_event_with_results(event)
+            self.core.handle_event(event)
         except Exception:
             return False
 
@@ -85,7 +85,7 @@ class BehaviorAdapter:
             timestamp=timestamp,
         )
         try:
-            self.core.handle_event_with_results(event)
+            self.core.handle_event(event)
         except Exception:
             return False
 

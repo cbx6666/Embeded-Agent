@@ -22,6 +22,10 @@ ENV/
 .coverage
 .coverage.*
 htmlcov/
+data/experiments/runtime/
+data/experiments/retrieval/
+data/experiments/replay/
+data/experiments/traces/
 
 # Type checker and linter cache
 .mypy_cache/

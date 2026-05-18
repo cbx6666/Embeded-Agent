@@ -1,0 +1,653 @@
+{
+  "updated_at": 1778690007,
+  "state": {
+    "user": {
+      "presence": "present",
+      "attention": "idle",
+      "behavior": "phone_use",
+      "emotion": "neutral",
+      "fatigue_level": "none",
+      "presence_confidence": null,
+      "attention_confidence": null,
+      "behavior_confidence": null,
+      "emotion_confidence": null,
+      "fatigue_confidence": null
+    },
+    "interaction": {
+      "mode": "focus",
+      "in_conversation": true,
+      "dialogue_state": "idle",
+      "last_user_time": 1778689634,
+      "last_agent_response_time": 1778689634
+    },
+    "focus": {
+      "active": true,
+      "start_ts": 1778687347,
+      "target_duration_sec": 1500,
+      "elapsed_sec": 2604,
+      "remaining_sec": 455,
+      "triggered_by": "cli",
+      "last_focus_end_ts": null
+    },
+    "environment": {
+      "light_lux": null,
+      "light_level": null,
+      "noise_db": null,
+      "noise_level": null,
+      "temperature_c": null,
+      "temperature_level": null,
+      "humidity_pct": null,
+      "humidity_level": null
+    },
+    "cooldown": {
+      "reminder_last_ts": {
+        "environment_warning": 1778687257,
+        "rest_reminder": 1778689434
+      }
+    },
+    "runtime_history": {
+      "recent_events": [
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689246,
+          "payload": {
+            "remaining_sec": 1160,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "system_triggered",
+          "timestamp": 1778689167,
+          "payload": {
+            "trigger": "focus_timer_started",
+            "source": "agent_action_result"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689324,
+          "payload": {
+            "remaining_sec": 1082,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "user_attention_updated",
+          "timestamp": 1778689335,
+          "payload": {
+            "attention": "focused",
+            "source": "mock",
+            "behavior": "unknown"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689391,
+          "payload": {
+            "remaining_sec": 1015,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "user_attention_updated",
+          "timestamp": 1778689434,
+          "payload": {
+            "behavior": "working",
+            "source": "mock",
+            "attention": "idle"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689470,
+          "payload": {
+            "remaining_sec": 936,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "system_triggered",
+          "timestamp": 1778689434,
+          "payload": {
+            "trigger": "agent_response_completed",
+            "source": "agent_action_result",
+            "source_event_type": "user_attention_updated",
+            "action_count": 2
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689556,
+          "payload": {
+            "remaining_sec": 850,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "user_fatigue_updated",
+          "timestamp": 1778689566,
+          "payload": {
+            "fatigue_level": "none",
+            "source": "mock"
+          }
+        },
+        {
+          "type": "user_text_input",
+          "timestamp": 1778689634,
+          "payload": {
+            "text": "突然开始忍不住刷手机了。",
+            "source": "cli"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689601,
+          "payload": {
+            "remaining_sec": 805,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "system_triggered",
+          "timestamp": 1778689634,
+          "payload": {
+            "trigger": "agent_response_completed",
+            "source": "agent_action_result",
+            "source_event_type": "user_text_input",
+            "action_count": 2
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689709,
+          "payload": {
+            "remaining_sec": 697,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "user_attention_updated",
+          "timestamp": 1778689719,
+          "payload": {
+            "attention": "distracted",
+            "source": "mock",
+            "behavior": "unknown"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689784,
+          "payload": {
+            "remaining_sec": 622,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "user_attention_updated",
+          "timestamp": 1778689817,
+          "payload": {
+            "behavior": "phone_use",
+            "source": "mock",
+            "attention": "idle"
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689863,
+          "payload": {
+            "remaining_sec": 543,
+            "timer": "focus"
+          }
+        },
+        {
+          "type": "system_triggered",
+          "timestamp": 1778689916,
+          "payload": {
+            "trigger": "focus_health_check",
+            "source": "agent_autonomy",
+            "mode": "focus",
+            "focus_active": true
+          }
+        },
+        {
+          "type": "timer_ticked",
+          "timestamp": 1778689951,
+          "payload": {
+            "remaining_sec": 455,
+            "timer": "focus"
+          }
+        }
+      ],
+      "recent_messages": [
+        {
+          "role": "display",
+          "text": "小李，听你说眼睛酸了，我也心疼。要不先休息几分钟，让眼睛放松一下？还有大约16分钟，休息一会儿再继续效果会更好哦。",
+          "timestamp": 1778688490
+        },
+        {
+          "role": "agent",
+          "text": "小李，听你说眼睛酸了，我也心疼。要不先休息几分钟，让眼睛放松一下？还有大约16分钟，休息一会儿再继续效果会更好哦。",
+          "timestamp": 1778688490
+        },
+        {
+          "role": "display",
+          "text": "眼睛酸了？休息几分钟再继续吧，还有约16分钟。",
+          "timestamp": 1778688490
+        },
+        {
+          "role": "display",
+          "text": "小李，我注意到你好像有点累了。没关系，还有14分钟，慢慢来就好。",
+          "timestamp": 1778688641
+        },
+        {
+          "role": "user",
+          "text": "行吧，我休息五分钟。",
+          "timestamp": 1778688980
+        },
+        {
+          "role": "agent",
+          "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+          "timestamp": 1778688980
+        },
+        {
+          "role": "display",
+          "text": "好的，休息五分钟吧！已暂停专注模式，听听轻音乐放松一下。",
+          "timestamp": 1778688980
+        },
+        {
+          "role": "display",
+          "text": "已结束专注。",
+          "timestamp": 1778688980
+        },
+        {
+          "role": "agent",
+          "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+          "timestamp": 1778688980
+        },
+        {
+          "role": "display",
+          "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+          "timestamp": 1778688980
+        },
+        {
+          "role": "user",
+          "text": "休息完了，继续学习。",
+          "timestamp": 1778689167
+        },
+        {
+          "role": "agent",
+          "text": "好的，小李，那我们继续学习吧。我会尽量少打扰你，加油哦。",
+          "timestamp": 1778689167
+        },
+        {
+          "role": "display",
+          "text": "好的，继续学习吧。",
+          "timestamp": 1778689167
+        },
+        {
+          "role": "display",
+          "text": "继续专注 20 分钟。",
+          "timestamp": 1778689167
+        },
+        {
+          "role": "display",
+          "text": "好的，小李，那我们继续学习吧。我会尽量少打扰你，加油哦。",
+          "timestamp": 1778689167
+        },
+        {
+          "role": "agent",
+          "text": "小李，你好像有点累了，要不要休息一下眼睛？",
+          "timestamp": 1778689434
+        },
+        {
+          "role": "display",
+          "text": "小李，你好像有点累了，要不要休息一下眼睛？",
+          "timestamp": 1778689434
+        },
+        {
+          "role": "user",
+          "text": "突然开始忍不住刷手机了。",
+          "timestamp": 1778689634
+        },
+        {
+          "role": "agent",
+          "text": "嗯，刷手机确实容易分心呢。要不要试试把手机放远一点，或者先专注完成剩下的十几分钟？",
+          "timestamp": 1778689634
+        },
+        {
+          "role": "display",
+          "text": "刷手机容易分心，试试放远一点？",
+          "timestamp": 1778689634
+        }
+      ],
+      "recent_actions": [
+        {
+          "type": "speak",
+          "timestamp": 1778688490,
+          "payload": {
+            "text": "小李，听你说眼睛酸了，我也心疼。要不先休息几分钟，让眼睛放松一下？还有大约16分钟，休息一会儿再继续效果会更好哦。",
+            "kind": "notification",
+            "level": "gentle",
+            "reason": "rest_reminder"
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778688490,
+          "payload": {
+            "text": "小李，听你说眼睛酸了，我也心疼。要不先休息几分钟，让眼睛放松一下？还有大约16分钟，休息一会儿再继续效果会更好哦。",
+            "kind": "notification",
+            "level": "gentle",
+            "reason": "rest_reminder"
+          }
+        },
+        {
+          "type": "speak",
+          "timestamp": 1778688490,
+          "payload": {
+            "text": "小李，听你说眼睛酸了，我也心疼。要不先休息几分钟，让眼睛放松一下？还有大约16分钟，休息一会儿再继续效果会更好哦。",
+            "reason": "User expressed discomfort; an empathetic response acknowledging their feelings and offering support is needed."
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778688490,
+          "payload": {
+            "text": "眼睛酸了？休息几分钟再继续吧，还有约16分钟。",
+            "reason": "User expressed discomfort; an empathetic response acknowledging their feelings and offering support is needed."
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778688641,
+          "payload": {
+            "text": "小李，我注意到你好像有点累了。没关系，还有14分钟，慢慢来就好。",
+            "reason": "reduce_reminder_frequency"
+          }
+        },
+        {
+          "type": "speak",
+          "timestamp": 1778688980,
+          "payload": {
+            "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+            "reason": "User explicitly agreed to rest; a warm, supportive acknowledgment reinforces positive behavior and builds trust."
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778688980,
+          "payload": {
+            "text": "好的，休息五分钟吧！已暂停专注模式，听听轻音乐放松一下。",
+            "reason": "User explicitly agreed to rest; a warm, supportive acknowledgment reinforces positive behavior and builds trust."
+          }
+        },
+        {
+          "type": "stop_timer",
+          "timestamp": 1778688980,
+          "payload": {}
+        },
+        {
+          "type": "display",
+          "timestamp": 1778688980,
+          "payload": {
+            "text": "已结束专注。",
+            "reason": "focus_stop"
+          }
+        },
+        {
+          "type": "speak",
+          "timestamp": 1778688980,
+          "payload": {
+            "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+            "kind": "notification",
+            "level": "gentle",
+            "reason": "rest_reminder"
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778688980,
+          "payload": {
+            "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+            "kind": "notification",
+            "level": "gentle",
+            "reason": "rest_reminder"
+          }
+        },
+        {
+          "type": "speak",
+          "timestamp": 1778689167,
+          "payload": {
+            "text": "好的，小李，那我们继续学习吧。我会尽量少打扰你，加油哦。",
+            "reason": "User explicitly stated '休息完了，继续学习' and expects a response; acknowledging their request builds trust and confirms understanding."
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778689167,
+          "payload": {
+            "text": "好的，继续学习吧。",
+            "reason": "User explicitly stated '休息完了，继续学习' and expects a response; acknowledging their request builds trust and confirms understanding."
+          }
+        },
+        {
+          "type": "start_timer",
+          "timestamp": 1778689167,
+          "payload": {
+            "duration_sec": 1200
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778689167,
+          "payload": {
+            "text": "继续专注 20 分钟。",
+            "reason": "continue_focus"
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778689167,
+          "payload": {
+            "text": "好的，小李，那我们继续学习吧。我会尽量少打扰你，加油哦。",
+            "reason": "reduce_reminder_frequency"
+          }
+        },
+        {
+          "type": "speak",
+          "timestamp": 1778689434,
+          "payload": {
+            "text": "小李，你好像有点累了，要不要休息一下眼睛？",
+            "kind": "notification",
+            "level": "gentle",
+            "reason": "rest_reminder"
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778689434,
+          "payload": {
+            "text": "小李，你好像有点累了，要不要休息一下眼睛？",
+            "kind": "notification",
+            "level": "gentle",
+            "reason": "rest_reminder"
+          }
+        },
+        {
+          "type": "speak",
+          "timestamp": 1778689634,
+          "payload": {
+            "text": "嗯，刷手机确实容易分心呢。要不要试试把手机放远一点，或者先专注完成剩下的十几分钟？",
+            "reason": "User explicitly reported distraction; a gentle, supportive response can help them refocus without being intrusive."
+          }
+        },
+        {
+          "type": "display",
+          "timestamp": 1778689634,
+          "payload": {
+            "text": "刷手机容易分心，试试放远一点？",
+            "reason": "User explicitly reported distraction; a gentle, supportive response can help them refocus without being intrusive."
+          }
+        }
+      ],
+      "reminder_records": [
+        {
+          "action_type": "display",
+          "timestamp": 1778687257,
+          "reason": "environment_warning",
+          "level": null,
+          "text": "好的，小李，我记住了。以后我会少提醒你，而且声音和语气都会轻轻的，不打扰你学习。你专心看书就好，累了就休息一下哦。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "speak",
+          "timestamp": 1778687347,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "好的，25分钟专注模式已经开始了。我会用温和的方式，不打扰你学习。累了就休息一下哦。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "display",
+          "timestamp": 1778687347,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "好的，25分钟专注模式已经开始了。我会用温和的方式，不打扰你学习。累了就休息一下哦。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "speak",
+          "timestamp": 1778687782,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "小李，困了的话就休息一下吧，不用勉强自己继续学哦。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "display",
+          "timestamp": 1778687782,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "小李，困了的话就休息一下吧，不用勉强自己继续学哦。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "speak",
+          "timestamp": 1778688490,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "小李，听你说眼睛酸了，我也心疼。要不先休息几分钟，让眼睛放松一下？还有大约16分钟，休息一会儿再继续效果会更好哦。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "display",
+          "timestamp": 1778688490,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "小李，听你说眼睛酸了，我也心疼。要不先休息几分钟，让眼睛放松一下？还有大约16分钟，休息一会儿再继续效果会更好哦。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "speak",
+          "timestamp": 1778688980,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "display",
+          "timestamp": 1778688980,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "好的，小李，休息五分钟吧！我帮你暂停专注模式，你可以听听轻音乐或者古风歌放松一下，眼睛也休息休息。",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "speak",
+          "timestamp": 1778689434,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "小李，你好像有点累了，要不要休息一下眼睛？",
+          "status": null,
+          "state": null
+        },
+        {
+          "action_type": "display",
+          "timestamp": 1778689434,
+          "reason": "rest_reminder",
+          "level": "gentle",
+          "text": "小李，你好像有点累了，要不要休息一下眼睛？",
+          "status": null,
+          "state": null
+        }
+      ],
+      "attention_records": [
+        {
+          "timestamp": 1778687547,
+          "attention": "focused",
+          "behavior": "unknown",
+          "confidence": null,
+          "source": "mock"
+        },
+        {
+          "timestamp": 1778687644,
+          "attention": "idle",
+          "behavior": "working",
+          "confidence": null,
+          "source": "mock"
+        },
+        {
+          "timestamp": 1778689335,
+          "attention": "focused",
+          "behavior": "unknown",
+          "confidence": null,
+          "source": "mock"
+        },
+        {
+          "timestamp": 1778689434,
+          "attention": "idle",
+          "behavior": "working",
+          "confidence": null,
+          "source": "mock"
+        },
+        {
+          "timestamp": 1778689719,
+          "attention": "distracted",
+          "behavior": "unknown",
+          "confidence": null,
+          "source": "mock"
+        },
+        {
+          "timestamp": 1778689817,
+          "attention": "idle",
+          "behavior": "phone_use",
+          "confidence": null,
+          "source": "mock"
+        }
+      ],
+      "environment_records": [],
+      "focus_sessions": [],
+      "focus_session_count": 0,
+      "focus_total_duration_sec": 0,
+      "distraction_event_count": 1,
+      "state_change_counts": {
+        "user_presence_updated": 1,
+        "user_attention_updated": 6,
+        "user_fatigue_updated": 4
+      },
+      "emotion_samples": [],
+      "emotion_summaries": []
+    },
+    "current_user_id": "xiaoli"
+  }
+}

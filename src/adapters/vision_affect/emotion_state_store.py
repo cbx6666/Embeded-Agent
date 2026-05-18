@@ -71,8 +71,8 @@ class EmotionStateStore:
                 "SELECT emotion FROM emotion_second_states WHERE ts = ?",
                 (ts,),
             )
-            old_row = cur.fetchone()
-            old_state = str(old_row[0]) if old_row else None
+            previous_row = cur.fetchone()
+            previous_state = str(previous_row[0]) if previous_row else None
 
             cur.execute(
                 """
@@ -88,14 +88,14 @@ class EmotionStateStore:
                 (ts, emotion, confidence, source, model, now),
             )
 
-            if old_state is None:
+            if previous_state is None:
                 self._apply_delta(cur, "emotion_daily_summary", "emotion_daily_totals", day, emotion, 1, now)
-            elif old_state != emotion:
-                self._apply_delta(cur, "emotion_daily_summary", "emotion_daily_totals", day, old_state, -1, now)
+            elif previous_state != emotion:
+                self._apply_delta(cur, "emotion_daily_summary", "emotion_daily_totals", day, previous_state, -1, now)
                 self._apply_delta(cur, "emotion_daily_summary", "emotion_daily_totals", day, emotion, 1, now)
 
             if self._should_cleanup(now):
-                self._cleanup_old_second_states(cur, now)
+                self._cleanup_expired_second_states(cur, now)
                 self._last_cleanup_ts = now
             self._conn.commit()
         except Exception:
@@ -229,7 +229,7 @@ class EmotionStateStore:
     def _should_cleanup(self, now: int) -> bool:
         return (now - self._last_cleanup_ts) >= self._cleanup_interval_sec
 
-    def _cleanup_old_second_states(self, cur: sqlite3.Cursor, now: int) -> None:
+    def _cleanup_expired_second_states(self, cur: sqlite3.Cursor, now: int) -> None:
         if self._second_state_retention_days <= 0:
             return
         threshold_ts = now - self._second_state_retention_days * 86400

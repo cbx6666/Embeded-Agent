@@ -1,59 +1,20 @@
 # Agent
 
-`src/agent/` 负责系统的事件驱动决策闭环。
+`agent/` 是嵌入式 Agent 的主领域包，主链路为：
 
-## 职责
+`Event -> Reducer -> RuntimeHistoryService -> LongTermMemoryPipeline -> PersonalContextBuilder -> DecisionPipeline -> Action -> ActionResult -> RuntimeTrace`
 
-- 定义标准 `Event`、`State`、`Intent`、`Action`
-- 根据事件归约状态
-- 基于规则和受约束的 LLM 辅助生成意图
-- 将意图稳定转换为动作
-- 执行动作并将结果回流为内部事件
+核心边界：
 
-## 工作流
+- `state/`：Agent 当前运行状态（含 `RuntimeHistory` 短期历史），不保存稳定偏好。
+- `memory/`：系统从长期交互中学习到的可证据化长期记忆。
+- `user/`：用户认知层，包含静态显式 `UserProfile` 和动态决策快照 `PersonalContext`。
+- `decision/`：只消费 `PersonalContext`，不直接读取任何 store。
+- `execution/`：执行 `Action`、记录 `ActionResult` 和轻量 `RuntimeTrace`。
 
-当前处理链路如下：
+Authoritative Source：
 
-```text
-Event
--> reducer 更新 State
--> planner 生成候选 Intent
--> （可选）LLM 辅助选择 Intent
--> IntentGuard 校验 Intent
--> realizer 生成 Action
--> AgentCore 执行 Action
--> ActionResult 回流为 system_triggered Event
--> AgentLoop 判断是否继续
-```
-
-其中：
-
-- `AgentCore` 负责单事件处理
-- `AgentLoop` 负责一轮闭环调度
-- LLM 仅参与意图判断和文本回复，不直接修改状态，也不直接生成动作
-
-## 目录
-
-- `action/`：动作模型
-- `event/`：事件模型
-- `state/`：状态模型
-- `decision/`：决策层，包含 `intent / planner / llm_intent_planner / intent_guard / policy / realizer`
-- `runtime/`：运行层，包含 `action_result / internal_events / autonomy / loop / trace`
-- `core.py`：核心调度器
-- `reducer.py`：状态归约
-
-## 验证终端
-
-项目提供独立的自主化验证终端，可用于手动注入事件、触发自主检查、运行内置场景并查看 trace：
-
-```bash
-python -m src.agent_lab
-```
-
-## 设计约束
-
-- 规则层负责边界与候选意图
-- LLM 仅在允许范围内辅助选择意图
-- Intent 必须经过统一校验
-- 动作执行结果必须可回流、可追踪
-- 自主行为默认低打扰，并受 cooldown、presence、mode 等条件约束
+- 显式资料和显式偏好只能来自 `UserProfile`。
+- 行为偏好和行为模式只能来自 `LongTermMemory`。
+- 最近对话、最近动作和传感器滚动采样只能来自 `RuntimeHistory`。
+- 决策上下文只能来自 `PersonalContextBuilder`。

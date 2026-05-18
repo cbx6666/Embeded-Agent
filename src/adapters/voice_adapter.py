@@ -17,7 +17,7 @@ from src.agent.event import make_speech_recognized_event
 
 
 class EventEmitSink(Protocol):
-    def handle_event_with_results(self, event) -> Any:
+    def handle_event(self, event) -> Any:
         ...
 
 
@@ -80,7 +80,7 @@ class VoiceAdapter:
             audio_id=audio_id,
             session_id=session_id,
         )
-        self._sink.handle_event_with_results(event)
+        self._sink.handle_event(event)
 
     def _normalize_action(self, action: Action) -> tuple[str, dict[str, Any]]:
         payload = dict(action.payload)

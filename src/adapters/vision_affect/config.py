@@ -58,6 +58,6 @@ class VisionAffectConfig:
 
     # --- 状态持久化：每秒明细 + 日/周汇总（SQLite） ---
     enable_state_storage: bool = True
-    state_stats_db_path: str = "data/state_stats.db"
+    state_stats_db_path: str = "data/runtime/state_stats.db"
     second_state_retention_days: int = 3
     state_cleanup_interval_sec: int = 300
