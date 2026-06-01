@@ -87,6 +87,33 @@ python -m src.main
 python -m src.main --vision
 ```
 
+可选桌宠显示：
+
+```bash
+python -m src.main --screen
+```
+
+可选语音交互（百度 ASR/TTS + 唤醒词）：
+
+```bash
+python -m src.main --voice
+python -m src.main --voice --voice-loop
+python -m src.main --voice --no-wake   # 手动 /voice_once
+```
+
+可选姿势检测（YOLO，当前为占位实现，Atlas 部署见 `docs/integration/external/`）：
+
+```bash
+python -m src.main --pose
+python -m src.main --pose --pose-device npu --pose-model yolov8n-pose.pt
+```
+
+组合运行示例：
+
+```bash
+python -m src.main --screen --vision --voice --pose
+```
+
 ## 测试
 
 ```bash

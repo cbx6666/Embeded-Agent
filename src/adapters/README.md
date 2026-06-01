@@ -16,7 +16,9 @@
 - `console_output.py`：将 `speak`、`display` 动作映射为控制台输出
 - `pet_display.py`：桌宠显示适配器；消费 `display` / `render_pet_expression` / `set_light_state`，并上报 `display_sensor_updated`
 - `voice_adapter.py`：语音输入输出适配器；上报 `speech_recognized`，消费 `speak`
+- `voice/`：板级语音完整实现（百度 ASR/TTS、唤醒词、麦克风仲裁）；由 `--voice` 启用
 - `behavior_adapter.py`：行为识别适配器；发出行为线索与行为汇总事件
+- `pose/`：YOLO 姿势与活动检测；上报 `user_posture_updated` / `user_activity_updated`；由 `--pose` 启用
 - `vision_affect/`：摄像头 + **MediaPipe Face Mesh**；**疲劳** 由 **EAR**（眼部 PERCLOS）与 **MAR**（打哈欠/张口，滑动窗内占比）加权融合后滞回分档；**情绪** 默认 **WuJie-OM**，也支持 `wujie-vgg19`、`raf`、`deepface`、`none`。模型和后端放在 **`backends/`**，**向上只发** `user_fatigue_updated` / `user_emotion_updated`。**不使用 YOLO**；内核不 import 本包内部实现。
 
 ## 视觉依赖
@@ -27,6 +29,9 @@
 python -m src.main --vision
 python -m src.main --vision --emotion-backend raf --raf-ckpt path/to/raf_resnet18.pth
 python -m src.main --vision --emotion-backend wujie-om --wujie-om path/to/model.om
+python -m src.main --voice
+python -m src.main --pose
+python -m src.main --screen --vision --voice --pose
 ```
 
 - 环境变量 **`EMBED_EMOTION_BACKEND`** 可设 `wujie-om` / `wujie-vgg19` / `raf` / `deepface` / `none`（覆盖 `--emotion-backend`）。

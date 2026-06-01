@@ -20,6 +20,8 @@ FIELD_MAP = {
         "fatigue_level",
         {"none", "mild", "moderate", "high"},
     ),
+    "posture": ("user_posture_updated", "posture", {"sitting", "standing", "leaning", "lying", "unknown"}),
+    "activity": ("user_activity_updated", "activity", {"studying", "working", "resting", "unknown"}),
 }
 
 

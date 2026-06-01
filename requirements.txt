@@ -1,6 +1,10 @@
 opencv-python-headless>=4.8.0
 mediapipe>=0.10.9
 numpy>=1.24.0
+pygame>=2.5.0
+
+# 语音模块（--voice 可选，跨平台录音依赖 sounddevice）
+sounddevice>=0.4.6
 
 # 表情识别（默认 DeepFace；会拉取 TensorFlow 等，安装较慢）
 deepface>=0.0.90

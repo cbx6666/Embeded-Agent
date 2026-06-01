@@ -77,6 +77,7 @@ class AgentCore:
         self.runtime_history_service = runtime_history_service
         self.llm_service = llm_service
         self.store = store
+        self._event_handled_callback: Callable[[AgentState], None] | None = None
 
         long_term_store = (
             long_term_memory_pipeline.store
@@ -190,7 +191,26 @@ class AgentCore:
             self.runtime_history_service.trim(self.state)
             self.store.save_state(self.state)
             self.last_runtime_trace = trace
+            
+            # 调用事件处理后的回调
+            if self._event_handled_callback is not None:
+                try:
+                    self._event_handled_callback(self.state)
+                except:
+                    pass
+                    
             return actions, results
+
+    def handle_event_with_results(self, event: Event) -> tuple[list[Action], list[ActionResult]]:
+        """语音/传感器适配器兼容入口，等价于 handle_event。"""
+        return self.handle_event(event)
+
+    def set_event_handled_callback(
+        self,
+        callback: Callable[[AgentState], None] | None,
+    ) -> None:
+        """设置事件处理完成后的回调。"""
+        self._event_handled_callback = callback
 
     def render_state(self) -> str:
         with self._lock:
@@ -439,6 +459,8 @@ def _should_touch_profile(event: Event) -> bool:
         "user_attention_updated",
         "user_emotion_updated",
         "user_fatigue_updated",
+        "user_posture_updated",
+        "user_activity_updated",
     }
 
 
@@ -467,8 +489,11 @@ def _trace_state_summary(state: AgentState) -> dict[str, object]:
         "user": {
             "presence": state.user.presence,
             "attention": state.user.attention,
+            "behavior": state.user.behavior,
             "emotion": state.user.emotion,
             "fatigue_level": state.user.fatigue_level,
+            "posture": state.user.posture,
+            "current_activity": state.user.current_activity,
         },
         "history_counts": {
             "recent_events": len(state.runtime_history.recent_events),

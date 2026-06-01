@@ -209,6 +209,8 @@ class ReducerTestCase(unittest.TestCase):
         self.assertIn("REDUCERS", source)
         self.assertIn("focus_start_requested", REDUCERS)
         self.assertIn("system_triggered", REDUCERS)
+        self.assertIn("user_posture_updated", REDUCERS)
+        self.assertIn("user_activity_updated", REDUCERS)
         self.assertNotIn("src.agent.action", source)
         self.assertNotIn("src.agent.decision.intent", source)
 
