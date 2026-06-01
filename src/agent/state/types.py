@@ -9,6 +9,8 @@ UserAttention = Literal["focused", "distracted", "idle"]
 UserEmotion = Literal["neutral", "tired", "stressed", "happy"]
 UserFatigueLevel = Literal["none", "mild", "moderate", "high"]
 UserBehavior = Literal["working", "phone_use", "staring", "desk_rest", "away", "unknown"]
+UserPosture = Literal["sitting", "standing", "leaning", "lying", "unknown"]
+CurrentActivity = Literal["studying", "working", "resting", "unknown"]
 
 # 输出与交互状态。
 DialogueState = Literal["idle", "listening", "thinking", "speaking"]

@@ -33,11 +33,21 @@ HELP_TEXT = """可用命令：
     /mock fatigue mild
     /mock fatigue moderate
     /mock fatigue high
+    /mock posture sitting
+    /mock posture standing
+    /mock posture leaning
+    /mock posture lying
+    /mock activity studying
+    /mock activity working
+    /mock activity resting
 
   系统命令：
     /state
     /history
     /profile
+    /voice_once
+    /pose start
+    /pose stop
     /users
     /switch_user xiaoli
     /switch_user xiaoli 小李

@@ -144,6 +144,17 @@ def _handle_user_fatigue_updated(state: AgentState, event: Event) -> None:
     state.user.fatigue_confidence = _optional_float(event.payload.get("confidence"))
 
 
+def _handle_user_posture_updated(state: AgentState, event: Event) -> None:
+    """更新用户姿势状态和姿势识别置信度。"""
+    state.user.posture = str(event.payload.get("posture", state.user.posture))
+    state.user.posture_confidence = _optional_float(event.payload.get("confidence"))
+
+
+def _handle_user_activity_updated(state: AgentState, event: Event) -> None:
+    """更新用户当前活动状态。"""
+    state.user.current_activity = str(event.payload.get("activity", state.user.current_activity))
+
+
 def _handle_light_level_updated(state: AgentState, event: Event) -> None:
     """更新光照数值和标准化光照等级。"""
     state.environment.light_lux = _optional_int(event.payload.get("light_lux"))
@@ -276,6 +287,8 @@ REDUCERS: dict[str, StateReducer] = {
     "user_attention_updated": _handle_user_attention_updated,
     "user_emotion_updated": _handle_user_emotion_updated,
     "user_fatigue_updated": _handle_user_fatigue_updated,
+    "user_posture_updated": _handle_user_posture_updated,
+    "user_activity_updated": _handle_user_activity_updated,
     "light_level_updated": _handle_light_level_updated,
     "temperature_humidity_updated": _handle_temperature_humidity_updated,
     "noise_level_updated": _handle_noise_level_updated,

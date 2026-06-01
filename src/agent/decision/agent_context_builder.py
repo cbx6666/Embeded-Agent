@@ -139,8 +139,11 @@ def _summarize_state(state: AgentState | None) -> dict[str, Any]:
         "user": {
             "presence": state.user.presence,
             "attention": state.user.attention,
+            "behavior": state.user.behavior,
             "emotion": state.user.emotion,
             "fatigue_level": state.user.fatigue_level,
+            "posture": state.user.posture,
+            "current_activity": state.user.current_activity,
         },
         "environment": {
             "light_level": state.environment.light_level,
