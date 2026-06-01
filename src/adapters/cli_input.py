@@ -20,14 +20,44 @@ HELP_TEXT = """可用命令：
     /mock attention focused
     /mock attention distracted
     /mock attention idle
+    /mock behavior working
+    /mock behavior phone_use
+    /mock behavior staring
+    /mock behavior desk_rest
+    /mock behavior away
     /mock emotion neutral
     /mock emotion tired
     /mock emotion stressed
     /mock emotion happy
+    /mock fatigue none
+    /mock fatigue mild
+    /mock fatigue moderate
+    /mock fatigue high
+    /mock posture sitting
+    /mock posture standing
+    /mock posture leaning
+    /mock posture lying
+    /mock activity studying
+    /mock activity working
+    /mock activity resting
 
   系统命令：
     /state
     /history
+    /profile
+    /voice_once
+    /pose start
+    /pose stop
+    /users
+    /switch_user xiaoli
+    /switch_user xiaoli 小李
+    /set_info age 12
+    /set_info gender 女
+    /set_info identity 小学生
+    /set_info hobbies 画画,足球
+    /set_pref favorite_content_types 音乐,相声,脱口秀
+    /set_pref reminder_style 温和
+    /set_pref favorite_music_styles 轻音乐,古风
     /help
     /exit
 """

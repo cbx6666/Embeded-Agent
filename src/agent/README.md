@@ -1,35 +1,20 @@
-﻿# agent
+# Agent
 
-`agent/` 是系统的软件核心，负责维护统一状态、处理标准事件、生成标准动作，并把整条运行链路串起来。
+`agent/` 是嵌入式 Agent 的主领域包，主链路为：
 
-## 职责
+`Event -> Reducer -> RuntimeHistoryService -> LongTermMemoryPipeline -> PersonalContextBuilder -> DecisionPipeline -> Action -> ActionResult -> RuntimeTrace`
 
-- 定义 `AgentState`
-- 定义标准 `Event`
-- 定义标准 `Action`
-- 根据事件更新状态
-- 根据当前状态和规则生成动作
-- 调度输出、定时器、记忆和存储服务
+核心边界：
 
-## 文件说明
+- `state/`：Agent 当前运行状态（含 `RuntimeHistory` 短期历史），不保存稳定偏好。
+- `memory/`：系统从长期交互中学习到的可证据化长期记忆。
+- `user/`：用户认知层，包含静态显式 `UserProfile` 和动态决策快照 `PersonalContext`。
+- `decision/`：只消费 `PersonalContext`，不直接读取任何 store。
+- `execution/`：执行 `Action`、记录 `ActionResult` 和轻量 `RuntimeTrace`。
 
-- `state/`：状态模型包，按领域拆成多个子模块
-- `event/`：标准事件模型包
-- `action/`：标准动作模型包
-- `reducer.py`：只负责“事件如何更新状态”
-- `policy.py`：只负责“当前状态下应该触发什么动作”
-- `core.py`：核心调度器，串起 reducer、policy、output、memory、storage
+Authoritative Source：
 
-## 设计原则
-
-- 状态、事件、动作分离
-- adapters 只负责适配，不负责定义领域模型
-- reducer 与 policy 分离
-- 核心逻辑不直接依赖真实硬件
-- 先保证 MVP 可运行，再逐步扩展规则复杂度
-
-## 具体例子
-
-- 状态例子：`state.focus.active = True`
-- 事件例子：`Event(type="user_presence_updated", payload={"presence": "away"})`
-- 动作例子：`Action(type="display", payload={"text": "用户已离席"})`
+- 显式资料和显式偏好只能来自 `UserProfile`。
+- 行为偏好和行为模式只能来自 `LongTermMemory`。
+- 最近对话、最近动作和传感器滚动采样只能来自 `RuntimeHistory`。
+- 决策上下文只能来自 `PersonalContextBuilder`。
