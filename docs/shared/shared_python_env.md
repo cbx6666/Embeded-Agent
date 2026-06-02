@@ -11,13 +11,74 @@
 
 > 本文档约定共享环境目录名为 `shared`，避免使用业务含义过强的目录名。
 
+## 依赖清单（与仓库同步）
+
+| 文件 | 用途 |
+|------|------|
+| `requirements.txt` | 项目声明的 Python 依赖（安装源） |
+| `requirements.lock.txt` | 共享环境当前已安装版本快照（排障/回溯） |
+| `requirements-pose.txt` | 可选：YOLO 姿势检测（`--pose`，未默认装入 shared） |
+
+**共享环境已安装的核心包（2026-06-01 更新）**：`opencv-python-headless`、`mediapipe`、`numpy`、`pygame`、`sounddevice`、`deepface`、`tf-keras`、`tensorflow`（随 DeepFace），以及板载 Ascend 的 `acl`（系统路径）。
+
+## 管理员：安装 / 更新共享环境依赖
+
+在能访问 PyPI 的机器上，由管理员执行（勿在个人 venv 重复装一套）：
+
+```bash
+cd /path/to/Embeded-Agent
+source /opt/ai-envs/shared/bin/activate
+
+# 安装或升级项目依赖
+python -m pip install -r requirements.txt
+
+# 生成锁文件供团队对照（提交到仓库）
+python -m pip freeze > requirements.lock.txt
+```
+
+安装完成后做一次导入自检：
+
+```bash
+python -c "
+import cv2, mediapipe, numpy, pygame, sounddevice, deepface, tf_keras
+print('cv2', cv2.__version__)
+print('mediapipe', mediapipe.__version__)
+print('numpy', numpy.__version__)
+print('pygame', pygame.version.ver)
+print('deepface / tf_keras ok')
+"
+python -c "import acl; print('acl ok')"   # NPU 情绪需要
+```
+
+> 若 `pip` 报 DNS/网络错误，先确认外网或镜像可用后再重试。安装过程中若提示 Ascend 相关包缺 `decorator`/`psutil`，一般不影响视觉/桌宠测试，需要 NPU 全链路时再单独补装。
+
 ## 日常使用（所有人）
 
 ### 1) 开发/测试前先激活共享环境
 
+若命令行前仍显示 **`(.venv)`**，说明项目虚拟环境仍在生效，`activate shared` 不会生效。请先退出再激活：
+
 ```bash
+cd ~/Embeded-Agent
+deactivate          # 重复执行直到提示符里不再有 (.venv)
 source /opt/ai-envs/shared/bin/activate
+which python        # 必须是 /opt/ai-envs/shared/bin/python
 ```
+
+**更省事（推荐）**：不依赖 `activate`，直接用共享 Python：
+
+```bash
+cd ~/Embeded-Agent
+./scripts/run_with_shared_env.sh scripts/test_camera_modules.py --vision-only --emotion-backend deepface --camera 0
+```
+
+或：
+
+```bash
+/opt/ai-envs/shared/bin/python scripts/test_camera_modules.py --vision-only --emotion-backend deepface --camera 0
+```
+
+> `scripts/test_camera_modules.py` 在检测到当前 Python 缺 `cv2/mediapipe` 时，会自动改用共享 Python 重新运行（可用 `EMBED_NO_SHARED_REEXEC=1` 关闭）。
 
 ### 2) 运行项目测试
 
@@ -28,8 +89,14 @@ python -m unittest discover -s tests -p "test_*.py" -q
 ### 3) 快速确认版本
 
 ```bash
-python -c "import cv2, mediapipe, acl; print('cv2', cv2.__version__, 'mediapipe', mediapipe.__version__, 'acl ok')"
-ls -lh external/fer_wujie1010/FER2013_VGG19/wujie_vgg19_static.om
+which python   # 应为 /opt/ai-envs/shared/bin/python
+
+python -c "
+import cv2, mediapipe, pygame, deepface, tf_keras
+print('cv2', cv2.__version__, 'mediapipe', mediapipe.__version__, 'pygame', pygame.version.ver)
+"
+python -c "import acl; print('acl ok')" 2>/dev/null || echo "acl 不可用（仅影响 wujie-om NPU 情绪）"
+ls -lh external/fer_wujie1010/FER2013_VGG19/wujie_vgg19_static.om 2>/dev/null || true
 ```
 
 ## 测试前一次性准备（新同学必做）
@@ -97,7 +164,27 @@ for idx in [0, 1]:
 PY
 ```
 
-### 4) 启动视觉链路
+### 4) 启动视觉 + 桌宠（推荐联调，仅需摄像头）
+
+在项目根目录、已激活 shared 环境：
+
+```bash
+cd /path/to/Embeded-Agent
+
+# 不调用 LLM，先确认摄像头疲劳/表情（DeepFace，无需 NPU）
+python scripts/test_camera_modules.py --vision-only --emotion-backend deepface --camera 0
+
+# 视觉 + pygame 桌宠窗口
+python scripts/test_camera_modules.py --vision --screen --emotion-backend deepface --camera 0
+```
+
+完整 Agent（需配置 `.env` 中 `DEEPSEEK_API_KEY`）：
+
+```bash
+python -m src.main --screen --vision --camera 0 --emotion-backend deepface
+```
+
+### 5) 仅启动视觉事件（main 入口）
 
 - 只测疲劳（不测情绪）：
 
@@ -105,11 +192,13 @@ PY
 python -m src.main --vision --camera 0 --emotion-backend none
 ```
 
-- 测 NPU OM 情绪：
+- 测 NPU OM 情绪（需先 `source` Ascend 环境变量）：
 
 ```bash
 python -m src.main --vision --camera 0 --emotion-backend wujie-om
 ```
+
+- 行为识别暂无摄像头自动管线，可在 CLI 用 `/mock behavior working` 等模拟。
 
 ## 团队约定（请遵守）
 
@@ -129,6 +218,25 @@ python -m src.main --vision --camera 0 --emotion-backend wujie-om
 
 - 确认激活的是共享环境：`which python`
 - 预期应指向 `/opt/ai-envs/shared/bin/python`
+
+### Q2b: deepface 报 `No module named 'tf_keras'`
+
+多见于命令行前带有 `(.venv)`，实际用的是项目 `.venv` 而非 shared。任选其一：
+
+```bash
+deactivate
+source /opt/ai-envs/shared/bin/activate
+cd ~/Embeded-Agent
+python scripts/test_camera_modules.py --vision-only --emotion-backend deepface --camera 0
+```
+
+或在当前 `.venv` 内补装：
+
+```bash
+pip install tf-keras
+# 若 mediapipe 与 protobuf 冲突，再执行：
+pip install "protobuf>=4.25.3,<5"
+```
 
 ### Q3: 摄像头打不开（`can't open camera by index`）
 
@@ -165,5 +273,39 @@ source /opt/ai-envs/shared/bin/activate
 
 - `usermod` 后如果不重新登录，组信息不会刷新
 - 退出当前终端会话并重新登录后再测
+
+---
+
+## YOLO26 手机 + 手腕邻近（行为分心）
+
+依赖与权重（在项目根目录执行）：
+
+```bash
+source /opt/ai-envs/shared/bin/activate
+pip install -r requirements-behavior.txt
+python scripts/download_yolo26_models.py
+
+# 导出 OM（必须用共享 Python，不要用 base conda 的 python3）
+deactivate   # 若提示符有 (base)，先退出 conda
+bash scripts/export_yolo26_to_om.sh
+
+# ONNX 已生成、仅重跑 ATC 时：
+# deactivate && SKIP_ONNX=1 bash scripts/export_yolo26_to_om.sh
+
+# ATC 报 np.float_ / NumPy 2.0：说明 atc 调到了 conda 的 python3，务必 deactivate 后再跑
+```
+
+权重保存到 `models/yolo26/`（官方 release [v8.4.0](https://github.com/ultralytics/assets/releases/tag/v8.4.0)）。
+
+摄像头联调：
+
+```bash
+python scripts/test_phone_hand_detection.py --camera 0
+# 无桌面时自动 --no-gui；约每 3s 打印心跳，避免误以为卡死
+python scripts/test_phone_hand_detection.py --camera 0 --imgsz 320 --heartbeat 3
+python scripts/test_phone_hand_detection.py --publish-events
+```
+
+若 `import ultralytics` 报 NumPy/matplotlib 冲突，请使用共享环境并保证 `numpy<2`（见 `requirements-behavior.txt`）。
 
 

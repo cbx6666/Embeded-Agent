@@ -28,3 +28,14 @@
 | Adapter | 责任 |
 |---------|------|
 | `BehaviorAdapter` | 将摄像头、关键点、行为分类模型或规则结果转换成 `user_presence_updated` 与 `user_attention_updated`。 |
+| `PhoneHandProximityDetector` | YOLO26 detect（COCO `cell phone`）+ YOLO26-pose（手腕）邻近判定。 |
+| `PhoneHandCameraAdapter` | 摄像头线程 + 上述检测，上报 `phone_use` / `working`。 |
+
+### YOLO26 手机 + 手腕邻近（已实现）
+
+- 权重：Ultralytics 官方 [assets v8.4.0](https://github.com/ultralytics/assets/releases/tag/v8.4.0) — `yolo26n.pt`、`yolo26n-pose.pt`
+- 下载：`python scripts/download_yolo26_models.py` → `models/yolo26/`
+- 依赖：`pip install -r requirements-behavior.txt`
+- 联调：`python scripts/test_phone_hand_detection.py`
+- **手机漏检时**：默认开启 **Face Mesh 低头融合**（与 `vision_affect` 同源 MediaPipe，不共用 WuJie 情绪 OM）：`低头 + pose 有人在 + 手腕在画面上半区` 可辅助判 `phone_use`；日志字段 `head_assist=1`。关闭：`--no-head-down-fusion`。
+- 调参：`--phone-conf 0.15`、`--hold-seconds 0.8`、`--distance-ratio 1.2`；对比 OM/PT：`--backend pt`。

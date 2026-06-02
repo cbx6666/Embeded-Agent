@@ -1,0 +1,6 @@
+# YOLO26 手机 + 手腕邻近行为检测（scripts/test_phone_hand_detection.py）
+ultralytics>=8.3.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0,<2.0.0
+torch>=2.0.0
+torchvision>=0.15.0
