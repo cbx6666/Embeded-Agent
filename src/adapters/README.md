@@ -18,7 +18,8 @@
 - `voice_adapter.py`：语音输入输出适配器；上报 `speech_recognized`，消费 `speak`
 - `voice/`：板级语音完整实现（百度 ASR/TTS、唤醒词、麦克风仲裁）；由 `--voice` 启用
 - `behavior_adapter.py`：行为识别适配器；发出行为线索与行为汇总事件
-- `pose/`：YOLO 姿势与活动检测；上报 `user_posture_updated` / `user_activity_updated`；由 `--pose` 启用
+- `behavior/`：YOLO26 手机+手腕+**姿势/活动**（`yolo26n-pose.om` NPU）；上报 `user_presence_updated` / `user_attention_updated` / `user_posture_updated` / `user_activity_updated`
+- ~~`pose/`~~：已并入 `behavior/`，勿单独启用
 - `vision_affect/`：摄像头 + **MediaPipe Face Mesh**；**疲劳** 由 **EAR**（眼部 PERCLOS）与 **MAR**（打哈欠/张口，滑动窗内占比）加权融合后滞回分档；**情绪** 默认 **WuJie-OM**，也支持 `wujie-vgg19`、`raf`、`deepface`、`none`。模型和后端放在 **`backends/`**，**向上只发** `user_fatigue_updated` / `user_emotion_updated`。**不使用 YOLO**；内核不 import 本包内部实现。
 
 ## 视觉依赖
@@ -26,16 +27,15 @@
 见根目录 **`requirements.txt`**（含 `mediapipe`、`deepface` 等）。启动示例：
 
 ```bash
-python -m src.main --vision
-python -m src.main --vision --emotion-backend raf --raf-ckpt path/to/raf_resnet18.pth
-python -m src.main --vision --emotion-backend wujie-om --wujie-om path/to/model.om
-python -m src.main --voice
-python -m src.main --pose
-python -m src.main --screen --vision --voice --pose
+python -m src.main
+python -m src.main --llm
+python -m src.main --llm --vision --emotion-backend raf --raf-ckpt path/to/raf_resnet18.pth
+python -m src.main --emotion-backend wujie-om
+# 默认 OM：models/wujie/wujie_vgg19_static.om；感知 tick 默认 4 Hz（--perception-hz 可改）
 ```
 
 - 环境变量 **`EMBED_EMOTION_BACKEND`** 可设 `wujie-om` / `wujie-vgg19` / `raf` / `deepface` / `none`（覆盖 `--emotion-backend`）。
-- 环境变量 **`WUJIE_OM_MODEL`** 和 **`WUJIE_OM_DEVICE_ID`** 可配置 WuJie-OM 模型路径和 Ascend 设备 ID。
+- 环境变量 **`EMBED_PERCEPTION_HZ`** 统一视觉采集/行为 OM/情绪帧率（默认 `4`）。
 - 环境变量 **`WUJIE_VGG19_CKPT`** 可配置 WuJie VGG19 checkpoint。
 - 环境变量 **`RAF_RESNET18_CKPT`** 在 RAF 模式下可代替 `--raf-ckpt`。
 

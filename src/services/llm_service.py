@@ -20,6 +20,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,7 @@ class LLMService:
         ).rstrip("/")
         self.model = model or env_values.get("DEEPSEEK_MODEL") or os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat"
         self.timeout_sec = float(timeout_sec)
+        self.voice_stream_sink: object | None = None
         self._is_configured()
 
     def complete_json(self, role: str, prompt: str) -> str:
@@ -78,6 +80,54 @@ class LLMService:
             {"role": "user", "content": text},
         ]
         return self.chat_completion(messages, temperature=0.4)
+
+    def chat_completion_stream(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float,
+    ) -> Iterator[str]:
+        """SSE 流式调用 DeepSeek，逐段 yield 文本 delta。"""
+
+        self._is_configured()
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(
+            url=f"{self.base_url}/chat/completions",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_sec) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="ignore").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        event = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = _extract_stream_delta(event)
+                    if delta:
+                        yield delta
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"DeepSeek API HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"DeepSeek API connection failed: {exc.reason}") from exc
 
     def chat_completion(self, messages: list[dict[str, str]], *, temperature: float) -> str:
         """调用 DeepSeek Chat Completions 并提取首条文本。"""
@@ -138,6 +188,17 @@ class LLMService:
             if merged:
                 return merged
         raise RuntimeError("DeepSeek API response missing text content")
+
+
+def _extract_stream_delta(event: dict[str, Any]) -> str:
+    choices = event.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    delta = choices[0].get("delta")
+    if not isinstance(delta, dict):
+        return ""
+    content = delta.get("content", "")
+    return content if isinstance(content, str) else ""
 
 
 def _load_env_file(env_path: str | Path | None) -> dict[str, str]:

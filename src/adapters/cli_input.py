@@ -46,8 +46,7 @@ HELP_TEXT = """可用命令：
     /history
     /profile
     /voice_once
-    /pose start
-    /pose stop
+    /voice_replay
     /users
     /switch_user xiaoli
     /switch_user xiaoli 小李

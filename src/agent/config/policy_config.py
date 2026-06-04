@@ -74,6 +74,22 @@ class DecisionPolicyConfig:
     )
     action_result_source: str = "agent_action_result"
     ignored_system_trigger_reason: str = "internal system trigger ignored by decision policy"
+    llm_skipped_event_types: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            {
+                "voice_wake_detected",
+                "voice_input_started",
+                "voice_input_stopped",
+                "tts_started",
+                "tts_finished",
+                "light_level_updated",
+                "temperature_humidity_updated",
+                "noise_level_updated",
+            }
+        )
+    )
+    # fast：语音/文本对话只调 1 次 LLM；full：四角色串行。库默认 full；main 默认 fast。
+    llm_mode: str = "full"
 
     def is_allowed_trigger(self, trigger: str, source: str) -> bool:
         """Return True if this system_triggered event should be processed."""
@@ -98,7 +114,15 @@ class ContextPolicyConfig:
     max_relevant_memories: int = 8
     noisy_runtime_event_types: frozenset[str] = field(
         default_factory=lambda: frozenset(
-            {"timer_ticked", "agent_response_completed", "focus_timer_started", "focus_timer_stopped"}
+            {
+                "timer_ticked",
+                "agent_response_completed",
+                "focus_timer_started",
+                "focus_timer_stopped",
+                "light_level_updated",
+                "temperature_humidity_updated",
+                "noise_level_updated",
+            }
         )
     )
     noisy_runtime_trigger_types: frozenset[str] = field(

@@ -35,6 +35,27 @@ data/experiments/traces/
 .vscode/
 .idea/
 
+# YOLO 权重（用 scripts/download_yolo26_models.py 拉取）
+models/yolo26/*.pt
+# ATC 中间 ONNX（已有 .om 时可删；用 scripts/export_yolo26_to_om.sh 重新导出）
+models/yolo26/*.onnx
+
+# 运行时数据（本地生成，勿提交）
+data/runtime/runtime_store.json
+data/runtime/state_stats.db
+data/*.wav
+data/voice_debug/
+data/voice_recordings/
+data/test_sherpa*.txt
+
+# Ascend 编译/导出临时产物
+fusion_result.json
+ge_check_op.json
+kernel_meta_temp_*/
+
+# 一次性导出包（勿进仓库）
+export/
+
 # OS files
 .DS_Store
 Thumbs.db

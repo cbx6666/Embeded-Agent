@@ -6,8 +6,10 @@ import time
 from typing import Any
 
 from src.agent.event.event_builders import (
+    make_activity_event,
     make_behavior_attention_event,
     make_behavior_presence_event,
+    make_posture_event,
 )
 
 
@@ -29,6 +31,10 @@ class BehaviorAdapter:
         self._last_attention_key: tuple[str, str] | None = None
         self._last_presence_ts: float | None = None
         self._last_attention_ts: float | None = None
+        self._last_posture: str | None = None
+        self._last_activity: str | None = None
+        self._last_posture_ts: float | None = None
+        self._last_activity_ts: float | None = None
 
     def publish_presence(
         self,
@@ -91,6 +97,62 @@ class BehaviorAdapter:
 
         self._last_attention_key = attention_key
         self._last_attention_ts = now
+        return True
+
+    def publish_posture(
+        self,
+        posture: str,
+        confidence: float | None = None,
+        source: str = "yolo26_pose_om_v1",
+        timestamp: int | None = None,
+    ) -> bool:
+        normalized_confidence = 1.0 if confidence is None else float(confidence)
+        if normalized_confidence < self.min_confidence:
+            return False
+        now = time.time()
+        if self._last_posture == posture and self._last_posture_ts is not None:
+            if (now - self._last_posture_ts) < self.debounce_seconds:
+                return False
+        event = make_posture_event(
+            posture=posture,
+            confidence=normalized_confidence,
+            source=source,
+            timestamp=timestamp,
+        )
+        try:
+            self.core.handle_event(event)
+        except Exception:
+            return False
+        self._last_posture = posture
+        self._last_posture_ts = now
+        return True
+
+    def publish_activity(
+        self,
+        activity: str,
+        confidence: float | None = None,
+        source: str = "yolo26_pose_om_v1",
+        timestamp: int | None = None,
+    ) -> bool:
+        normalized_confidence = 1.0 if confidence is None else float(confidence)
+        if normalized_confidence < self.min_confidence:
+            return False
+        now = time.time()
+        if self._last_activity == activity and self._last_activity_ts is not None:
+            if (now - self._last_activity_ts) < self.debounce_seconds:
+                return False
+        event = make_activity_event(
+            activity=activity,
+            confidence=normalized_confidence,
+            source=source,
+            timestamp=timestamp,
+        )
+        try:
+            self.core.handle_event(event)
+        except Exception:
+            return False
+        self._last_activity = activity
+        self._last_activity_ts = now
         return True
 
     def publish_behavior(

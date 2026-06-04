@@ -301,7 +301,11 @@ def record_audio_wav(
     output_path: str | Path,
     duration_sec: int = 10,
     sample_rate: int = 16000,
-    device: int | None = None,
+    device: int | str | None = None,
+    *,
+    alsa_device: str | None = None,
+    prepare_device: bool = True,
+    debug: Any | None = None,
 ) -> Path | None:
     """跨平台录音，保存为 WAV 文件。
 
@@ -314,7 +318,22 @@ def record_audio_wav(
 
     # ---- 释放麦克风设备（可能被 wake-word detector 的 arecord 占用）----
     if platform.system() == "Linux":
-        _release_alsa_device()
+        resolved = alsa_device or (device if isinstance(device, str) else None) or "plughw:0,0"
+        if prepare_device:
+            _release_alsa_device(resolved, settle_ms=80)
+        # 板载 ALSA 设备优先 arecord，避免 sounddevice 抢到错误默认麦
+        if alsa_device or isinstance(device, str):
+            recorded = _record_arecord_wav(
+                output_path,
+                duration_sec=duration_sec,
+                sample_rate=sample_rate,
+                alsa_device=alsa_device
+                or (device if isinstance(device, str) else None)
+                or "plughw:0,0",
+                debug=debug,
+            )
+            if recorded is not None:
+                return recorded
 
     # ---- 1. sounddevice（跨平台） ----
     try:
@@ -369,57 +388,195 @@ def record_audio_wav(
 
     # ---- 3. arecord（Linux） ----
     if platform.system() == "Linux":
-        import subprocess as _sp
-        alsa_dev = f"plughw:{device},0" if device is not None else "plughw:0,0"
-        try:
-            result = _sp.run(
-                [
-                    "arecord",
-                    "-D", alsa_dev,
-                    "-f", "S16_LE",
-                    "-r", str(sample_rate),
-                    "-c", "1",
-                    "-d", str(duration_sec),
-                    str(output_path),
-                ],
-                capture_output=True,
-                timeout=duration_sec + 5,
-            )
-            if result.returncode != 0:
-                stderr = result.stderr.decode("utf-8", errors="replace").strip()
-                print(f"[record_audio] arecord 失败 (code={result.returncode}): {stderr}", flush=True)
-                return None
-            if output_path.is_file() and output_path.stat().st_size > 1000:
-                return output_path
-            print(f"[record_audio] arecord 未生成有效文件: {output_path}", flush=True)
-        except _sp.TimeoutExpired:
-            print("[record_audio] arecord 超时", flush=True)
-        except FileNotFoundError:
-            print("[record_audio] arecord 命令未找到，请安装 alsa-utils", flush=True)
-        except Exception as exc:
-            print(f"[record_audio] arecord 异常: {exc}", flush=True)
+        if alsa_device:
+            alsa_dev = alsa_device
+        elif isinstance(device, str) and device.strip():
+            alsa_dev = device.strip()
+        elif device is not None:
+            alsa_dev = f"plughw:{device},0"
+        else:
+            alsa_dev = "plughw:0,0"
+        recorded = _record_arecord_wav(
+            output_path,
+            duration_sec=duration_sec,
+            sample_rate=sample_rate,
+            alsa_device=alsa_dev,
+        )
+        if recorded is not None:
+            return recorded
 
     print("[record_audio] ⚠️ 所有录音后端均不可用。", flush=True)
     return None
 
 
-def _release_alsa_device() -> None:
-    """释放 ALSA 麦克风设备（kill 掉占用设备的 arecord/parecord 进程）。
+def _record_arecord_wav(
+    output_path: Path,
+    *,
+    duration_sec: int,
+    sample_rate: int,
+    alsa_device: str,
+    debug: Any | None = None,
+) -> Path | None:
+    import subprocess as _sp
+    import time
 
-    解决 wake-word detector 的后台 arecord 与语音采集 arecord 争抢同一麦克风的问题。
+    from src.adapters.voice.alsa_audio_devices import (
+        capture_device_node_exists,
+        resolve_capture_device,
+        wait_for_capture_device,
+    )
+
+    def _log(level: str, event: str, **fields: Any) -> None:
+        if debug is None:
+            return
+        fn = getattr(debug, level, None)
+        if callable(fn):
+            fn(event, **fields)
+
+    devices_to_try: list[str] = []
+    primary = (alsa_device or "").strip()
+    if primary:
+        devices_to_try.append(primary)
+    fallback = resolve_capture_device(explicit=primary or None)
+    if fallback and fallback not in devices_to_try:
+        devices_to_try.append(fallback)
+
+    last_stderr = ""
+    for device in devices_to_try:
+        for attempt in range(1, 4):
+            if not capture_device_node_exists(device):
+                _log(
+                    "warn",
+                    "capture_node_missing",
+                    device=device,
+                    attempt=attempt,
+                )
+                wait_for_capture_device(device, timeout_sec=0.8)
+            _log(
+                "step",
+                "arecord_start",
+                device=device,
+                duration_sec=duration_sec,
+                output=str(output_path),
+                attempt=attempt,
+                important=True,
+            )
+            try:
+                result = _sp.run(
+                    [
+                        "arecord",
+                        "-D",
+                        device,
+                        "-f",
+                        "S16_LE",
+                        "-r",
+                        str(sample_rate),
+                        "-c",
+                        "1",
+                        "-d",
+                        str(duration_sec),
+                        str(output_path),
+                    ],
+                    capture_output=True,
+                    timeout=duration_sec + 5,
+                )
+                stderr = result.stderr.decode("utf-8", errors="replace").strip()
+                last_stderr = stderr
+                if result.returncode == 0 and output_path.is_file() and output_path.stat().st_size > 1000:
+                    _log(
+                        "info",
+                        "arecord_ok",
+                        device=device,
+                        attempt=attempt,
+                        bytes=output_path.stat().st_size,
+                        stderr=stderr or "(none)",
+                    )
+                    return output_path
+                _log(
+                    "error",
+                    "arecord_failed",
+                    device=device,
+                    attempt=attempt,
+                    returncode=result.returncode,
+                    stderr=stderr,
+                )
+                print(
+                    f"[record_audio] arecord 失败 (device={device}, attempt={attempt}, "
+                    f"code={result.returncode}): {stderr}",
+                    flush=True,
+                )
+            except _sp.TimeoutExpired:
+                _log("error", "arecord_timeout", device=device, attempt=attempt)
+                print("[record_audio] arecord 超时", flush=True)
+            except FileNotFoundError:
+                _log("error", "arecord_not_found")
+                print("[record_audio] arecord 命令未找到，请安装 alsa-utils", flush=True)
+                return None
+            except Exception as exc:
+                _log("error", "arecord_exception", device=device, message=str(exc))
+                print(f"[record_audio] arecord 异常: {exc}", flush=True)
+
+            if attempt < 3:
+                time.sleep(0.15 * attempt)
+                wait_for_capture_device(device, timeout_sec=0.5 * attempt)
+
+    if last_stderr:
+        _log("error", "arecord_exhausted", stderr=last_stderr, devices=devices_to_try)
+    return None
+
+
+def _release_alsa_device(alsa_device: str | None = None, *, settle_ms: int = 150) -> None:
+    """释放目标麦克风（kill 占用该设备的 arecord/parecord），避免与唤醒检测抢麦。"""
+    release_capture_device(alsa_device, settle_ms=settle_ms)
+
+
+def release_capture_device(
+    alsa_device: str | None = None,
+    *,
+    settle_ms: int = 150,
+    use_fuser: bool = False,
+    allow_global_pkill: bool = True,
+) -> None:
+    """释放指定 ALSA 录音设备，并短暂等待驱动就绪。
+
+    默认不用 fuser -k（易把 USB 麦节点打没）。
+    allow_global_pkill=False 时跳过 pkill（保护常驻 arecord）。
     """
     import subprocess as _sp
-    for cmd in ("arecord", "parecord"):
-        try:
-            _sp.run(["pkill", "-9", cmd], capture_output=True)
-        except Exception:
-            pass
-    # 也尝试 fuser 释放 PCM 设备
-    for dev in ("/dev/snd/pcmC0D0c", "/dev/snd/pcmC0D0p"):
-        try:
-            _sp.run(["fuser", "-k", dev], capture_output=True)
-        except Exception:
-            pass
+    import time
+
+    if allow_global_pkill:
+        for cmd in ("arecord", "parecord"):
+            try:
+                _sp.run(["pkill", "-15", cmd], capture_output=True, timeout=2)
+            except Exception:
+                pass
+        time.sleep(0.08)
+        for cmd in ("arecord", "parecord"):
+            try:
+                _sp.run(["pkill", "-9", cmd], capture_output=True, timeout=2)
+            except Exception:
+                pass
+
+    if use_fuser:
+        from src.adapters.voice.alsa_audio_devices import parse_alsa_device
+
+        parsed = parse_alsa_device(alsa_device or "")
+        if parsed is not None:
+            card, dev = parsed
+            pcm_capture = f"/dev/snd/pcmC{card}D{dev}c"
+            try:
+                _sp.run(["fuser", "-k", pcm_capture], capture_output=True, timeout=2)
+            except Exception:
+                pass
+
+    if settle_ms > 0:
+        time.sleep(settle_ms / 1000.0)
+
+    if alsa_device:
+        from src.adapters.voice.alsa_audio_devices import wait_for_capture_device
+
+        wait_for_capture_device(alsa_device, timeout_sec=min(2.0, settle_ms / 500 + 0.5))
 
 
 def _base64_encode(data: bytes) -> str:
