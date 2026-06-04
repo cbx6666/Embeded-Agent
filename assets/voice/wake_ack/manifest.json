@@ -1,0 +1,22 @@
+[
+  {
+    "id": "wozai_qingshuo",
+    "text": "我在，请说。",
+    "file": "wozai_qingshuo.wav"
+  },
+  {
+    "id": "zai_de",
+    "text": "在的，请说。",
+    "file": "zai_de.wav"
+  },
+  {
+    "id": "ni_shuo",
+    "text": "嗯，你说。",
+    "file": "ni_shuo.wav"
+  },
+  {
+    "id": "wozai",
+    "text": "我在。",
+    "file": "wozai.wav"
+  }
+]

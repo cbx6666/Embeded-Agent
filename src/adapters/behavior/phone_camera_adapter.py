@@ -13,6 +13,7 @@ from src.adapters.behavior.phone_hand_detector import (
     PhoneHandProximityDetector,
     dependencies_met,
 )
+from src.adapters.perception_config import behavior_inference_interval_sec
 from src.adapters.behavior_adapter import BehaviorAdapter
 
 
@@ -26,15 +27,21 @@ class PhoneHandCameraAdapter:
         camera_index: int = 0,
         detector: PhoneHandProximityDetector | None = None,
         behavior_adapter: BehaviorAdapter | None = None,
-        inference_interval: float = 0.25,
-        source: str = "yolo26_phone_hand_v1",
+        inference_interval: float | None = None,
+        source: str = "yolo26_phone_hand_om_v1",
+        frame_bus: Any | None = None,
+        pose_source: str = "yolo26_pose_om_v1",
     ) -> None:
         self.core = core
         self.camera_index = int(camera_index)
         self.detector = detector or PhoneHandProximityDetector()
         self.behavior = behavior_adapter or BehaviorAdapter(core)
-        self.inference_interval = float(inference_interval)
+        self.inference_interval = (
+            behavior_inference_interval_sec() if inference_interval is None else float(inference_interval)
+        )
         self.source = source
+        self.pose_source = pose_source
+        self.frame_bus = frame_bus
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -57,18 +64,35 @@ class PhoneHandCameraAdapter:
 
     def _run_loop(self) -> None:
         self.detector.load_models()
-        cap = open_camera(self.camera_index)
-        if not cap.isOpened():
-            print(f"[PhoneHandCameraAdapter] 无法打开摄像头 index={self.camera_index}")
-            return
-        warmup_camera(cap)
+        own_cap = None
+        if self.frame_bus is None:
+            cap = open_camera(self.camera_index)
+            if not cap.isOpened():
+                print(f"[PhoneHandCameraAdapter] 无法打开摄像头 index={self.camera_index}")
+                return
+            warmup_camera(cap)
+            own_cap = cap
         last_infer = 0.0
+        last_bus_seq = -1
         try:
             while not self._stop.is_set():
-                ok, frame = grab_latest_frame(cap, flush=3)
-                if not ok or frame is None:
-                    time.sleep(0.05)
-                    continue
+                frame = None
+                if self.frame_bus is not None:
+                    seq = self.frame_bus.seq
+                    if seq == last_bus_seq:
+                        time.sleep(0.02)
+                        continue
+                    frame = self.frame_bus.get_latest_copy()
+                    last_bus_seq = seq
+                    if frame is None:
+                        time.sleep(0.02)
+                        continue
+                else:
+                    assert own_cap is not None
+                    ok, frame = grab_latest_frame(own_cap, flush=3)
+                    if not ok or frame is None:
+                        time.sleep(0.05)
+                        continue
                 now = time.time()
                 if now - last_infer < self.inference_interval:
                     continue
@@ -81,10 +105,20 @@ class PhoneHandCameraAdapter:
 
                 if result.presence_phase == "left":
                     self.behavior.publish_attention(
-                        attention="focused",
+                        attention="idle",
                         behavior="away",
                         confidence=0.9,
                         source=self.source,
+                    )
+                    self.behavior.publish_posture(
+                        "unknown",
+                        confidence=0.9,
+                        source=self.pose_source,
+                    )
+                    self.behavior.publish_activity(
+                        "unknown",
+                        confidence=0.9,
+                        source=self.pose_source,
                     )
                 elif result.phone_in_hand:
                     self.behavior.publish_attention(
@@ -100,5 +134,20 @@ class PhoneHandCameraAdapter:
                         confidence=0.9,
                         source=self.source,
                     )
+                if result.posture != "unknown":
+                    pose_conf = max(float(result.posture_confidence), 0.85)
+                    self.behavior.publish_posture(
+                        result.posture,
+                        confidence=pose_conf,
+                        source=self.pose_source,
+                    )
+                if result.activity != "unknown":
+                    pose_conf = max(float(result.posture_confidence), 0.85)
+                    self.behavior.publish_activity(
+                        result.activity,
+                        confidence=pose_conf,
+                        source=self.pose_source,
+                    )
         finally:
-            cap.release()
+            if own_cap is not None:
+                own_cap.release()

@@ -36,6 +36,40 @@ def make_behavior_presence_event(
     )
 
 
+def make_posture_event(
+    posture: str,
+    *,
+    source: str = "yolo26_pose_om_v1",
+    confidence: float | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    """构造用户姿势更新事件（由行为 YOLO26-pose OM 同帧推断）。"""
+    return _build_event(
+        "user_posture_updated",
+        timestamp=timestamp,
+        posture=posture,
+        source=source,
+        confidence=_normalize_confidence(confidence),
+    )
+
+
+def make_activity_event(
+    activity: str,
+    *,
+    source: str = "yolo26_pose_om_v1",
+    confidence: float | None = None,
+    timestamp: int | None = None,
+) -> Event:
+    """构造用户活动更新事件（由行为 YOLO26-pose OM 同帧推断）。"""
+    return _build_event(
+        "user_activity_updated",
+        timestamp=timestamp,
+        activity=activity,
+        source=source,
+        confidence=_normalize_confidence(confidence),
+    )
+
+
 def make_behavior_attention_event(
     attention: str,
     *,

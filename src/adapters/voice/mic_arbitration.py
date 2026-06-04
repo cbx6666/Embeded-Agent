@@ -11,11 +11,14 @@ _MIC_LOCK = threading.RLock()
 
 @contextmanager
 def mic_capture_lock(*, timeout_sec: float | None = None):
-    acquired = _MIC_LOCK.acquire(timeout=None if timeout_sec is None else float(timeout_sec))
+    """串行化同一进程内对单麦克风的占用（唤醒检测 vs 用户录音）。"""
+    if timeout_sec is None:
+        acquired = _MIC_LOCK.acquire(blocking=True)
+    else:
+        acquired = _MIC_LOCK.acquire(timeout=float(timeout_sec))
+    if not acquired:
+        raise TimeoutError("麦克风正被其它语音任务占用")
     try:
-        if not acquired:
-            return
         yield
     finally:
-        if acquired:
-            _MIC_LOCK.release()
+        _MIC_LOCK.release()

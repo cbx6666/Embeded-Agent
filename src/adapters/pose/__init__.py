@@ -1,11 +1,5 @@
-from src.adapters.pose.yolo_pose_detection import (
-    DetectionResult,
-    PoseDetectionAdapter,
-    YOLOPoseDetector,
-)
+"""姿势 Event 已并入 behavior 模块（yolo26n-pose.om 同帧推断），勿再单独启 pose 线程。"""
 
-__all__ = [
-    "DetectionResult",
-    "PoseDetectionAdapter",
-    "YOLOPoseDetector",
-]
+from src.adapters.behavior.pose_inference import infer_posture_and_activity
+
+__all__ = ["infer_posture_and_activity"]

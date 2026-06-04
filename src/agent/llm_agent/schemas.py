@@ -111,6 +111,7 @@ class ResponseDraft:
     speak_text: str = ""
     display_text: str = ""
     tone: str = "calm"
+    already_spoken: bool = False
 
     @classmethod
     def from_dict(cls, data: object) -> "ResponseDraft":

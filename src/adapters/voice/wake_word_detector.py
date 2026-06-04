@@ -3,6 +3,7 @@
 持续监听麦克风，当检测到唤醒词时生成 `voice_wake_detected` 事件并注入 AgentCore。
 支持多种检测策略：
 - **Porcupine**（Picovoice）：生产级高精度，需 `.pv` 模型文件
+- **Sherpa-ONNX KWS**：开源中文关键词唤醒，无需注册（默认推荐）
 - **EnergyBased**：基于音频能量的简单检测，支持 Windows/macOS/Linux
 - **Mock**：始终返回 True，用于本地调试
 
@@ -15,6 +16,7 @@
 from __future__ import annotations
 
 import io
+import os
 import struct
 import subprocess
 import threading
@@ -45,6 +47,13 @@ class WakeWordEvent:
 # ---------------------------------------------------------------------------
 # 跨平台音频工具
 # ---------------------------------------------------------------------------
+
+def _pcm_chunk_bytes(indata: Any) -> bytes:
+    """sounddevice RawInputStream 回调里 indata 可能是 memoryview/cffi buffer。"""
+    if hasattr(indata, "tobytes"):
+        return indata.tobytes()
+    return bytes(indata)
+
 
 def _get_audio_recorder(
     alsa_device: str = "plughw:0,0",
@@ -125,7 +134,7 @@ def _sounddevice_recorder(
         if stopped.is_set():
             raise sounddevice.CallbackStop
         with q_lock:
-            q.append(indata.tobytes())
+            q.append(_pcm_chunk_bytes(indata))
 
     # device=None 表示默认麦克风
     device_id = device if isinstance(device, int) else None
@@ -229,12 +238,20 @@ def _sox_recorder(device: str, sample_rate: int, sox_cmd: str, chunk_size: int) 
 class WakeWordDetector(ABC):
     """唤醒词检测器抽象基类。"""
 
-    def __init__(self, sink: EventSink | None = None, source: str = "microphone") -> None:
+    def __init__(
+        self,
+        sink: EventSink | None = None,
+        source: str = "microphone",
+        *,
+        alsa_device: str = "plughw:0,0",
+    ) -> None:
         self._sink = sink
         self._source = source
+        self._alsa_device = alsa_device
         self._running = False
         self._thread: threading.Thread | None = None
         self._on_wake: list[Callable[[WakeWordEvent], None]] = []
+        self._arecord_proc: Any | None = None
 
     @abstractmethod
     def detect_once(self, audio_chunk: bytes) -> str | None:
@@ -256,9 +273,26 @@ class WakeWordDetector(ABC):
     def stop(self) -> None:
         """停止后台监听线程。"""
         self._running = False
+        self._terminate_arecord_proc()
         if self._thread is not None:
             self._thread.join(timeout=5.0)
             self._thread = None
+
+    def _terminate_arecord_proc(self) -> None:
+        proc = self._arecord_proc
+        if proc is None:
+            return
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        finally:
+            self._arecord_proc = None
 
     def _emit(self, keyword: str) -> None:
         """将唤醒事件注入 AgentCore 并触发回调。"""
@@ -293,85 +327,125 @@ class WakeWordDetector(ABC):
         import subprocess as _sp
         restart_delay = 1.0  # 重启前等待秒数（给录音进程释放设备的时间）
 
+        import platform as _platform
+
+        prefer_arecord = _platform.system() == "Linux" and os.environ.get(
+            "EMBED_WAKE_AUDIO", "arecord"
+        ).strip().lower() in {"arecord", "alsa", "linux"}
+
         while self._running:
             chunk_size = 512  # samples at 16kHz ≈ 32ms
+            handled = False
 
-            # ---- 优先 sounddevice（跨平台通用）----
-            try:
-                import sounddevice as _sd
-
-                q: list[bytes] = []
-                _stopped = _th.Event()
-
-                def _callback(_indata, _frames, _time_info, _status):
-                    if _status:
-                        print(f"[WakeWord-sounddevice] {_status}", flush=True)
-                    if _stopped.is_set():
-                        raise _sd.CallbackStop
-                    q.append(_indata.tobytes())
-
-                stream = _sd.RawInputStream(
-                    samplerate=16000,
-                    blocksize=chunk_size,
-                    device=None,
-                    channels=1,
-                    dtype="int16",
-                    callback=_callback,
-                )
-                try:
-                    with stream:
-                        while self._running:
-                            time.sleep(0.05)
-                            if not q:
-                                continue
-                            chunk = q.pop(0)
-                            keyword = self.detect_once(chunk)
-                            if keyword is not None:
-                                self._emit(keyword)
-                finally:
-                    _stopped.set()
-                break  # sounddevice 正常退出（_running=False），跳出外层循环
-            except ImportError:
-                pass
-            except Exception as exc:
-                if not self._running:
+            if prefer_arecord:
+                handled = self._run_arecord_loop(chunk_size, restart_delay)
+                if handled and not self._running:
                     break
-                print(f"[WakeWord] sounddevice 异常: {exc}，{restart_delay}s 后重试...", flush=True)
-                time.sleep(restart_delay)
+                if self._running:
+                    time.sleep(restart_delay)
                 continue
 
-            # ---- Linux 回退：直接用 arecord subprocess ----
-            try:
-                proc = _sp.Popen(
-                    ["arecord", "-D", "plughw:0,0", "-f", "S16_LE", "-r", "16000", "-c", "1", "-q"],
-                    stdout=_sp.PIPE,
-                    stderr=_sp.DEVNULL,
-                )
-                try:
-                    while self._running:
-                        data = proc.stdout.read(chunk_size * 2)
-                        if not data:
-                            # EOF（被 pkill 杀掉了，或设备暂时不可用），退出内层循环，等待重启
-                            break
-                        keyword = self.detect_once(data)
-                        if keyword is not None:
-                            self._emit(keyword)
-                        time.sleep(0.01)
-                finally:
-                    try:
-                        proc.terminate()
-                        proc.wait(timeout=3)
-                    except Exception:
-                        pass
-            except Exception as exc:
-                if not self._running:
-                    break
-                print(f"[WakeWord] arecord 异常: {exc}", flush=True)
+            handled = self._run_sounddevice_loop(chunk_size)
+            if handled and not self._running:
+                break
+            if not handled and _platform.system() == "Linux":
+                handled = self._run_arecord_loop(chunk_size, restart_delay)
 
-            # arecord 被 pkill 后等待设备释放，再重启
             if self._running:
                 print(f"[WakeWord] 等待 {restart_delay}s 后重启唤醒词检测...", flush=True)
                 time.sleep(restart_delay)
+
+    def _run_sounddevice_loop(self, chunk_size: int) -> bool:
+        """使用 sounddevice 采集；成功跑过一段返回 True。"""
+        import threading as _th
+
+        try:
+            import sounddevice as _sd
+        except ImportError:
+            return False
+
+        q: list[bytes] = []
+        _stopped = _th.Event()
+
+        def _callback(_indata, _frames, _time_info, _status):
+            if _status:
+                print(f"[WakeWord-sounddevice] {_status}", flush=True)
+            if _stopped.is_set():
+                raise _sd.CallbackStop
+            q.append(_pcm_chunk_bytes(_indata))
+
+        stream = _sd.RawInputStream(
+            samplerate=16000,
+            blocksize=chunk_size,
+            device=None,
+            channels=1,
+            dtype="int16",
+            callback=_callback,
+        )
+        try:
+            with stream:
+                while self._running:
+                    time.sleep(0.05)
+                    if not q:
+                        continue
+                    chunk = q.pop(0)
+                    keyword = self.detect_once(chunk)
+                    if keyword is not None:
+                        self._emit(keyword)
+            return True
+        except Exception as exc:
+            if self._running:
+                print(f"[WakeWord] sounddevice 异常: {exc}", flush=True)
+            return False
+        finally:
+            _stopped.set()
+
+    def _run_arecord_loop(self, chunk_size: int, restart_delay: float) -> bool:
+        """Linux arecord 采集（板载麦推荐 plughw:1,0）。"""
+        import subprocess as _sp
+
+        try:
+            proc = _sp.Popen(
+                [
+                    "arecord",
+                    "-D",
+                    self._alsa_device,
+                    "-f",
+                    "S16_LE",
+                    "-r",
+                    "16000",
+                    "-c",
+                    "1",
+                    "-q",
+                ],
+                stdout=_sp.PIPE,
+                stderr=_sp.DEVNULL,
+            )
+            self._arecord_proc = proc
+            try:
+                while self._running:
+                    data = proc.stdout.read(chunk_size * 2)
+                    if not data:
+                        break
+                    keyword = self.detect_once(data)
+                    if keyword is not None:
+                        self._emit(keyword)
+                    time.sleep(0.01)
+                return True
+            finally:
+                self._arecord_proc = None
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=3)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+        except Exception as exc:
+            if self._running:
+                print(f"[WakeWord] arecord 异常: {exc}", flush=True)
+            return False
 
     @abstractmethod
     def _audio_loop(self) -> Iterator[bytes]:
@@ -411,7 +485,7 @@ class PorcupineWakeWordDetector(WakeWordDetector):
         source: str = "microphone",
         alsa_device: str = "plughw:0,0",
     ) -> None:
-        super().__init__(sink=sink, source=source)
+        super().__init__(sink=sink, source=source, alsa_device=alsa_device)
         self._model_path = Path(model_path)
         self._keyword_path = Path(keyword_path)
         self._sensitivities = sensitivities or [0.5]
@@ -477,7 +551,7 @@ class EnergyBasedWakeWordDetector(WakeWordDetector):
         source: str = "microphone",
         alsa_device: str = "plughw:0,0",
     ) -> None:
-        super().__init__(sink=sink, source=source)
+        super().__init__(sink=sink, source=source, alsa_device=alsa_device)
         self._wake_word = wake_word
         self._energy_threshold = float(energy_threshold)
         self._min_trigger_frames = int(min_trigger_frames)
@@ -538,7 +612,7 @@ class MockWakeWordDetector(WakeWordDetector):
         source: str = "mock",
         trigger_after_sec: float = 0.0,
     ) -> None:
-        super().__init__(sink=sink, source=source)
+        super().__init__(sink=sink, source=source, alsa_device="mock")
         self._wake_word = wake_word
         self._trigger_after_sec = float(trigger_after_sec)
         self._start_time: float | None = None
@@ -565,6 +639,91 @@ class MockWakeWordDetector(WakeWordDetector):
 
 
 # ---------------------------------------------------------------------------
+# Sherpa-ONNX KWS —— 开源中文关键词唤醒（无需 Picovoice 注册）
+# ---------------------------------------------------------------------------
+
+class SherpaOnnxWakeWordDetector(WakeWordDetector):
+    """基于 Sherpa-ONNX 的离线关键词唤醒（如「小助」）。
+
+    需 pip install sherpa-onnx pypinyin，并运行 scripts/setup_sherpa_kws.py。
+    """
+
+    def __init__(
+        self,
+        *,
+        model_dir: str | Path,
+        keywords_file: str | Path,
+        wake_word: str = "小助",
+        keywords_threshold: float = 0.25,
+        keywords_score: float = 2.0,
+        num_threads: int = 2,
+        use_int8: bool = True,
+        sample_rate: int = 16000,
+        silence_cooldown_sec: float = 2.0,
+        sink: EventSink | None = None,
+        source: str = "microphone",
+        alsa_device: str = "plughw:0,0",
+    ) -> None:
+        from src.adapters.voice.sherpa_kws import create_keyword_spotter, resolve_sherpa_kws_dir
+
+        super().__init__(sink=sink, source=source, alsa_device=alsa_device)
+        self._model_dir = resolve_sherpa_kws_dir(model_dir)
+        self._keywords_file = Path(keywords_file).expanduser().resolve()
+        self._wake_word = wake_word.strip() or "小助"
+        self._sample_rate = int(sample_rate)
+        self._silence_cooldown = float(silence_cooldown_sec)
+        self._last_trigger_time = 0.0
+        self._detect_lock = threading.Lock()
+
+        self._spotter = create_keyword_spotter(
+            model_dir=self._model_dir,
+            keywords_file=self._keywords_file,
+            keywords_threshold=keywords_threshold,
+            keywords_score=keywords_score,
+            num_threads=num_threads,
+            use_int8=use_int8,
+        )
+        self._stream = self._spotter.create_stream()
+
+    def detect_once(self, audio_chunk: bytes) -> str | None:
+        import numpy as np
+
+        if len(audio_chunk) < 2:
+            return None
+
+        with self._detect_lock:
+            samples = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32) / 32768.0
+            self._stream.accept_waveform(self._sample_rate, samples)
+            while self._spotter.is_ready(self._stream):
+                self._spotter.decode_stream(self._stream)
+            result = self._spotter.get_result(self._stream).strip()
+            if not result:
+                return None
+
+            now = time.time()
+            if now - self._last_trigger_time < self._silence_cooldown:
+                self._spotter.reset_stream(self._stream)
+                return None
+
+            self._last_trigger_time = now
+            self._spotter.reset_stream(self._stream)
+            keyword = self._wake_word or result
+            print(f"[WakeWord-Sherpa] 命中：{result!r} → {keyword!r}", flush=True)
+            return keyword
+
+    def stop(self) -> None:
+        super().stop()
+        with self._detect_lock:
+            try:
+                self._spotter.reset_stream(self._stream)
+            except Exception:
+                pass
+
+    def _audio_loop(self) -> Iterator[bytes]:
+        yield from ()
+
+
+# ---------------------------------------------------------------------------
 # 工厂函数
 # ---------------------------------------------------------------------------
 
@@ -578,7 +737,7 @@ def build_wake_word_detector(
     """根据 backend 名称构造对应的唤醒词检测器。
 
     Args:
-        backend: 唤醒引擎，可选 "porcupine" | "energy" | "mock"
+        backend: 唤醒引擎，可选 "sherpa-onnx" | "porcupine" | "energy" | "mock"
         sink: 事件下沉对象
         source: 事件来源标识
         **kwargs: 透传给具体检测器
@@ -586,13 +745,17 @@ def build_wake_word_detector(
         WakeWordDetector 实例
     """
     backend = backend.lower().strip()
+    if backend in {"sherpa-onnx", "sherpa", "kws", "sherpa_onnx"}:
+        return SherpaOnnxWakeWordDetector(sink=sink, source=source, **kwargs)
     if backend in {"porcupine", "picovoice"}:
         return PorcupineWakeWordDetector(sink=sink, source=source, **kwargs)
     if backend in {"energy", "ste", "simple"}:
         return EnergyBasedWakeWordDetector(sink=sink, source=source, **kwargs)
     if backend in {"mock", "dummy", "test"}:
         return MockWakeWordDetector(sink=sink, source=source, **kwargs)
-    raise ValueError(f"未知的唤醒词检测器 backend：{backend}，可选：porcupine / energy / mock")
+    raise ValueError(
+        f"未知的唤醒词检测器 backend：{backend}，可选：sherpa-onnx / porcupine / energy / mock"
+    )
 
 
 # ---------------------------------------------------------------------------

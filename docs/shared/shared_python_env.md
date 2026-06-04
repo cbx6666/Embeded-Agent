@@ -56,14 +56,17 @@ python -c "import acl; print('acl ok')"   # NPU 情绪需要
 
 ### 1) 开发/测试前先激活共享环境
 
-若命令行前仍显示 **`(.venv)`**，说明项目虚拟环境仍在生效，`activate shared` 不会生效。请先退出再激活：
+若命令行前仍显示 **`(.venv)`**，说明项目虚拟环境仍在生效，会先盖住 shared。请先退出再激活：
 
 ```bash
 cd ~/Embeded-Agent
 deactivate          # 重复执行直到提示符里不再有 (.venv)
 source /opt/ai-envs/shared/bin/activate
 which python        # 必须是 /opt/ai-envs/shared/bin/python
+echo $VIRTUAL_ENV   # 必须是 /opt/ai-envs/shared
 ```
+
+> **历史问题（已修复）**：若 `source /opt/ai-envs/shared/bin/activate` 后 `which python` 仍指向 `/home/drbin/Embeded-Agent/.venv`，说明 shared 的 `activate` 被错误生成。管理员应把 `VIRTUAL_ENV` 指回 `/opt/ai-envs/shared`（见 `bin/activate` 内基于脚本路径的 `realpath` 写法），并检查 `pyvenv.cfg` 与 `bin/*` 脚本的 shebang。
 
 **更省事（推荐）**：不依赖 `activate`，直接用共享 Python：
 
@@ -96,7 +99,7 @@ import cv2, mediapipe, pygame, deepface, tf_keras
 print('cv2', cv2.__version__, 'mediapipe', mediapipe.__version__, 'pygame', pygame.version.ver)
 "
 python -c "import acl; print('acl ok')" 2>/dev/null || echo "acl 不可用（仅影响 wujie-om NPU 情绪）"
-ls -lh external/fer_wujie1010/FER2013_VGG19/wujie_vgg19_static.om 2>/dev/null || true
+ls -lh models/wujie/wujie_vgg19_static.om 2>/dev/null || true
 ```
 
 ## 测试前一次性准备（新同学必做）
@@ -176,12 +179,19 @@ python scripts/test_camera_modules.py --vision-only --emotion-backend deepface -
 
 # 视觉 + pygame 桌宠窗口
 python scripts/test_camera_modules.py --vision --screen --emotion-backend deepface --camera 0
+
+# 桌宠全屏（VNC/HDMI，需 export DISPLAY=:1）
+python scripts/test_camera_modules.py --screen-only --screen-fullscreen
+python -m src.main
+# 默认全栈（桌宠全屏+视觉+语音）；仅 CLI：python -m src.main --llm
 ```
 
 完整 Agent（需配置 `.env` 中 `DEEPSEEK_API_KEY`）：
 
 ```bash
-python -m src.main --screen --vision --camera 0 --emotion-backend deepface
+export DISPLAY=:1
+python -m src.main
+# 或指定摄像头：python -m src.main --camera 0
 ```
 
 ### 5) 仅启动视觉事件（main 入口）
@@ -256,7 +266,7 @@ python -c "import acl; print('acl ok')"
 - 检查 OM 文件是否存在（示例路径）：
 
 ```bash
-ls -lh external/fer_wujie1010/FER2013_VGG19/wujie_vgg19_static.om
+ls -lh models/wujie/wujie_vgg19_static.om
 ```
 
 ### Q5: `python: command not found`

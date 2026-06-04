@@ -1,0 +1,680 @@
+智能陪伴与情境交互终端 Agent
+运行时模型设计说明（State / Event / Action）
+版本：V1
+阶段：软件核心设计阶段（暂不含真实硬件接入）
+
+一、文档目的
+
+本文件用于定义本项目软件核心中的三类基础运行时模型：
+
+1. State（状态模型）
+2. Event（事件模型）
+3. Action（动作模型）
+
+这三类模型共同构成 Agent 运行时的最小核心抽象，用于支撑系统在暂不接入真实硬件的情况下，先完成软件层的状态管理、事件驱动、策略决策与动作输出能力建设。
+
+本设计面向当前项目的第一阶段目标，即先构建一个可运行、可扩展、结构清晰的 Agent 软件内核，为后续接入摄像头、麦克风、显示屏、灯光、传感器、大模型和本地数据库提供统一接口基础。
+
+二、设计背景
+
+根据当前项目整体技术路线，系统总体数据流为：
+
+感知输入（摄像头 / 麦克风 / 传感器）
+→ 状态建模（行为识别 / 情绪识别 / 环境分析）
+→ Agent 决策（是否交互、交互内容、交互方式）
+→ 交互输出（显示屏 / 语音 / 灯光）
+
+因此，软件核心运行时模型必须满足以下要求：
+
+1. 能表达当前用户状态、交互状态、专注状态、环境状态和运行记忆；
+2. 能承载来自用户输入、定时器、感知更新和系统内部触发的统一事件；
+3. 能输出统一动作，而不是直接耦合到具体硬件调用；
+4. 能服务于当前 MVP，也能支持后续功能扩展；
+5. 能在不引入过度复杂设计的前提下，为团队并行开发提供清晰边界。
+
+三、设计原则
+
+1. 统一性原则
+所有模块都围绕统一的 State、Event、Action 进行协作，避免每个模块使用不同的数据表示方式。
+
+2. 分层解耦原则
+输入层负责产生 Event，状态层负责维护 State，决策层根据 State 与 Event 生成 Action，执行层负责消费 Action。State / Event / Action 不直接依赖具体硬件实现。
+
+3. 轻量可扩展原则
+当前版本优先满足 MVP 的实现需要，不做过度通用化设计，但字段和结构需兼顾后续扩展。
+
+4. 面向场景原则
+本设计不是抽象的通用 Agent 框架，而是面向“桌面学习 / 工作陪伴场景”的情境交互 Agent。因此模型定义必须围绕专注模式、情绪状态、环境提醒、语音交互、显示状态等核心场景展开。
+
+5. 可持久化原则
+State 中的关键内容应可转为字典 / JSON 持久化，便于调试、恢复状态和后续接入本地存储。
+
+四、运行时模型总体关系
+
+运行时系统中的基本流程如下：
+
+1. 外部输入或内部机制产生 Event；
+2. Event 进入系统后，驱动 State 更新；
+3. 决策层根据当前 State 和本次 Event 进行规则判断；
+4. 如满足条件，则生成一个或多个 Action；
+5. Action 被输出适配层执行；
+6. 相关事件、消息和结果写入 Memory 或日志中。
+
+因此，三类模型的职责边界如下：
+
+1. State：系统当前“是什么状态”
+2. Event：系统当前“发生了什么事”
+3. Action：系统当前“准备做什么”
+
+五、State 设计
+
+5.1 设计目标
+
+State 是 Agent 的统一状态中心，用于保存系统当前运行快照。State 不仅承载简单的控制变量，还应作为“状态建模层”的统一输出，供决策层、输出层和存储层读取。
+
+当前版本 State 应至少覆盖以下几类信息：
+
+1. 用户状态
+2. 交互状态
+3. 专注状态
+4. 环境状态
+5. 提醒冷却状态
+6. 运行记忆状态
+
+5.2 顶层结构
+
+建议使用一个总的 AgentState 作为顶层对象，在其内部再划分若干子状态对象，以避免所有字段平铺在一个结构中导致后续难以维护。
+
+推荐顶层结构如下：
+
+AgentState
+- user
+- interaction
+- focus
+- environment
+- cooldown
+- memory
+
+以下分别说明各子状态的职责与字段建议。
+
+5.3 UserState（用户状态）
+
+UserState 用于描述当前系统所理解到的“用户当前状态”，是感知层与状态建模层最核心的输出之一。
+
+建议包含以下字段：
+
+1. presence
+含义：用户在场状态
+取值建议：
+- present
+- away
+- unknown
+
+2. attention
+含义：用户注意力 / 专注状态
+取值建议：
+- focused
+- distracted
+- idle
+
+3. emotion
+含义：用户情绪状态
+取值建议：
+- neutral
+- tired
+- stressed
+- happy
+
+4. current_activity
+含义：当前活动类型
+取值建议：
+- studying
+- working
+- resting
+- unknown
+
+5. emotion_confidence
+含义：情绪识别置信度
+类型建议：float 或 null
+
+6. attention_confidence
+含义：注意力 / 行为识别置信度
+类型建议：float 或 null
+
+设计说明：
+UserState 对应项目中的行为识别、情绪识别和在场 / 离席检测等功能。未来无论是 mock 输入还是真实视觉模型输出，最终都应归一到该结构中。
+
+5.4 InteractionState（交互状态）
+
+InteractionState 用于描述系统当前的交互会话状态，包括当前运行模式、是否处于对话中、对话所处阶段等。
+
+建议包含以下字段：
+
+1. mode
+含义：系统运行模式
+取值建议：
+- normal
+- focus
+- silent
+
+2. in_conversation
+含义：当前是否处于交互会话中
+类型建议：bool
+
+3. dialogue_state
+含义：当前对话阶段
+取值建议：
+- idle
+- listening
+- thinking
+- speaking
+
+4. last_user_time
+含义：最近一次用户主动输入时间戳
+类型建议：int 或 null
+
+5. last_agent_response_time
+含义：最近一次系统响应时间戳
+类型建议：int 或 null
+
+设计说明：
+InteractionState 对应语音交互、文本交互和屏幕状态机中的若干阶段。即使当前 MVP 仅支持 CLI，也建议预留对 listening / thinking / speaking 的抽象，以便后续无缝接入语音与显示模块。
+
+5.5 FocusState（专注状态）
+
+FocusState 用于描述与专注模式、番茄钟、倒计时等相关的任务状态。
+
+建议包含以下字段：
+
+1. active
+含义：当前是否处于专注模式
+类型建议：bool
+
+2. start_ts
+含义：本次专注开始时间戳
+类型建议：int 或 null
+
+3. target_duration_sec
+含义：本次专注目标时长（秒）
+类型建议：int 或 null
+
+4. elapsed_sec
+含义：本次专注已持续时长（秒）
+类型建议：int
+
+5. remaining_sec
+含义：当前剩余时长（秒）
+类型建议：int 或 null
+
+6. triggered_by
+含义：本次专注的触发来源
+取值建议：
+- user
+- auto
+- null
+
+7. last_focus_end_ts
+含义：最近一次专注结束时间戳
+类型建议：int 或 null
+
+设计说明：
+FocusState 对应项目中的专注模式、时间管理、学习监督等功能，是第一阶段 MVP 的重点状态之一。
+
+5.6 EnvironmentState（环境状态）
+
+EnvironmentState 用于保存当前环境感知结果。当前阶段即使暂不接入真实传感器，也建议预留这些字段，用于支持 mock 输入和后续扩展。
+
+建议包含以下字段：
+
+1. light
+含义：光照强度
+类型建议：int 或 null
+
+2. noise
+含义：噪声水平
+类型建议：int 或 null
+
+3. temperature
+含义：温度
+类型建议：float 或 null
+
+4. humidity
+含义：湿度
+类型建议：float 或 null
+
+设计说明：
+EnvironmentState 对应项目中的环境感知与健康提醒功能。后续环境异常提醒、日总结、上下文生成都可能使用该部分数据。
+
+5.7 CooldownState（冷却状态）
+
+CooldownState 用于管理不同类型提醒的冷却控制，避免系统在短时间内重复触发相同提醒。
+
+建议包含以下字段：
+
+1. reminder_last_ts
+含义：按提醒类型保存最近一次提醒时间戳
+类型建议：dict[str, int]
+
+示例：
+- focus_break -> 1712345678
+- emotion_care -> 1712348888
+- environment_alert -> 1712350000
+
+设计说明：
+项目中存在多类主动提醒，包括专注休息提醒、情绪关怀提醒、久坐提醒、环境提醒等。仅保存“最后一次提醒时间”无法支持多类提醒的独立冷却，因此建议按类型维护。
+
+5.8 MemoryState（运行记忆状态）
+
+MemoryState 用于保存当前阶段最基本的运行记忆与近端历史，用于支撑上下文、日志和专注记录。
+
+建议包含以下字段：
+
+1. recent_events
+含义：最近事件记录
+类型建议：list[dict]
+
+2. recent_messages
+含义：最近消息记录
+类型建议：list[dict]
+
+3. focus_sessions
+含义：专注时段记录
+类型建议：list[dict]
+
+设计说明：
+当前版本不建议过早拆分 working memory、episodic memory、semantic memory，但应保留最近事件、最近消息和专注记录三类最基本信息，以支撑当前 MVP 和后续总结类功能。
+
+5.9 AgentState 顶层说明
+
+AgentState 是系统唯一的统一状态入口。任何决策逻辑都应优先读取 AgentState，而不是直接跨模块读取零散变量。
+
+AgentState 建议支持以下基本能力：
+
+1. 转换为字典
+用于 JSON 持久化、日志记录和调试输出。
+
+2. 从字典恢复
+用于状态恢复、测试和存储层反序列化。
+
+3. 保持子结构边界清晰
+避免字段膨胀和职责混乱。
+
+六、Event 设计
+
+6.1 设计目标
+
+Event 用于表示系统运行过程中发生的离散事件，是驱动系统状态变化和触发决策的统一输入。
+
+当前版本事件模型必须满足以下要求：
+
+1. 统一承载用户输入、定时器、mock 感知和系统内部触发；
+2. 足够简单，便于当前 MVP 快速落地；
+3. 后续可扩展到更丰富的事件类型。
+
+6.2 基本结构
+
+当前版本 Event 建议至少包含以下字段：
+
+1. type
+含义：事件类型
+
+2. timestamp
+含义：事件发生时间戳
+
+3. payload
+含义：事件附带数据
+类型建议：dict[str, Any]
+
+6.3 当前版本推荐事件类型
+
+第一阶段推荐保留以下最小事件类型集合：
+
+1. user_text
+含义：用户主动输入文本
+来源：
+- CLI 输入
+- 后续可扩展到 ASR 文本结果
+
+典型 payload 示例：
+- text: "开始专注 25 分钟"
+
+2. timer_tick
+含义：定时器周期触发事件
+来源：
+- 倒计时服务
+- 系统调度器
+
+典型 payload 示例：
+- timer_name: "focus"
+- remaining_sec: 120
+
+3. state_update
+含义：感知状态或 mock 状态更新
+来源：
+- mock 输入
+- 后续可扩展到视觉模块、传感器模块
+
+典型 payload 示例：
+- target: "emotion"
+- value: "tired"
+
+或：
+- presence: "present"
+- attention: "focused"
+- emotion: "neutral"
+
+4. system_trigger
+含义：系统内部触发事件
+来源：
+- 规则判断后产生的内部触发
+- 定时总结、超时退出、自动提醒候选等
+
+典型 payload 示例：
+- trigger_type: "focus_timeout"
+- trigger_type: "need_rest_reminder"
+
+6.4 事件设计说明
+
+当前版本事件类型刻意保持较少，原因如下：
+
+1. MVP 目标是先跑通软件内核，不是一次性覆盖所有细粒度事件；
+2. 较少的事件类型更利于 reducer 和 policy 的初始实现；
+3. 后续如需扩展，可基于现有结构增加更细分事件，而不必推翻整体设计。
+
+七、Action 设计
+
+7.1 设计目标
+
+Action 用于表示 Agent 决策后的输出意图。Action 不应直接绑定到具体硬件 API，而应作为系统统一的动作抽象，由输出适配层或服务层负责解释和执行。
+
+换言之，系统决策层不直接“操作屏幕”或“播放语音”，而是发出标准 Action，由具体 adapter 再去映射到控制台输出、TTS、UI 刷新或灯光控制。
+
+7.2 基本结构
+
+当前版本 Action 建议至少包含以下字段：
+
+1. type
+含义：动作类型
+
+2. payload
+含义：动作数据
+类型建议：dict[str, Any]
+
+7.3 当前版本推荐动作类型
+
+第一阶段推荐保留以下最小动作类型集合：
+
+1. speak
+含义：输出一段用于播报 / 回复的文本
+当前执行方式：
+- 控制台打印
+后续可扩展到：
+- TTS
+- 扬声器播放
+
+典型 payload 示例：
+- text: "好的，已经开始专注计时。"
+
+2. display
+含义：输出一段用于显示层的文本或状态信息
+当前执行方式：
+- 控制台打印
+后续可扩展到：
+- 屏幕渲染
+- UI 状态切换
+
+典型 payload 示例：
+- text: "专注模式进行中"
+- status: "focus"
+
+3. start_timer
+含义：启动一个计时任务
+当前执行方式：
+- 交由 timer service 处理
+
+典型 payload 示例：
+- timer_name: "focus"
+- duration_sec: 1500
+
+4. stop_timer
+含义：停止一个计时任务
+当前执行方式：
+- 交由 timer service 处理
+
+典型 payload 示例：
+- timer_name: "focus"
+
+5. none
+含义：本次无动作输出
+用途：
+- 显式表示策略判断后无输出
+- 便于统一处理返回值
+
+7.4 动作设计说明
+
+当前阶段 Action 刻意保持最小集合，是因为：
+
+1. 当前 MVP 以 CLI 与控制台输出为主；
+2. 硬件执行层尚未接入；
+3. 核心目标是先形成统一动作接口，而非穷尽所有动作类型。
+
+后续扩展时，可在不破坏当前结构的前提下继续增加如下动作：
+- light
+- notify
+- save_summary
+- play_sound
+- update_avatar
+- show_progress
+
+八、State / Event / Action 的协作方式
+
+8.1 基本流程
+
+系统中三类模型的基本协作关系如下：
+
+1. 输入层生成 Event；
+2. reducer 根据 Event 更新 State；
+3. policy 根据 Event + State 判断是否需要输出 Action；
+4. output adapter 或 service 负责执行 Action；
+5. memory service 将 Event、Message、Session 写入 State.memory 或存储层。
+
+8.2 示例流程一：开始专注
+
+用户输入：
+“开始专注 25 分钟”
+
+对应流程为：
+
+1. 生成 Event
+type = user_text
+payload.text = "开始专注 25 分钟"
+
+2. reducer 更新 State
+- interaction.in_conversation = true
+- interaction.last_user_time = 当前时间
+
+3. policy 判断
+- 识别到用户意图为开始专注
+- 设置 focus.active = true
+- 设置 focus.start_ts
+- 设置 focus.target_duration_sec = 1500
+- 设置 focus.remaining_sec = 1500
+- interaction.mode = focus
+
+4. 输出 Action
+- start_timer(duration_sec=1500)
+- speak("好的，已经开始专注计时。")
+- display("专注模式已启动")
+
+8.3 示例流程二：定时结束
+
+系统计时器结束后产生：
+
+Event
+type = timer_tick
+payload.remaining_sec = 0
+
+对应流程为：
+
+1. reducer 更新 State
+- focus.remaining_sec = 0
+- focus.active = false
+- interaction.mode = normal
+- focus.last_focus_end_ts = 当前时间
+
+2. policy 判断
+- 识别到专注到时
+- 生成提醒
+- 生成专注记录
+
+3. 输出 Action
+- stop_timer(timer_name=focus)
+- speak("专注时间到了，休息一下吧。")
+- display("专注结束")
+
+8.4 示例流程三：疲劳提醒
+
+mock 或感知层输入：
+
+Event
+type = state_update
+payload.emotion = tired
+payload.attention = focused
+
+对应流程为：
+
+1. reducer 更新 State.user
+- emotion = tired
+- attention = focused
+
+2. policy 判断
+若满足以下条件：
+- 当前处于专注状态
+- 已专注一定时长
+- 对应提醒未处于冷却期
+则可生成：
+
+Action
+- speak("你已经专注了一段时间，要不要休息一下？")
+
+同时更新：
+- cooldown.reminder_last_ts["focus_break"] = 当前时间
+
+九、当前版本与功能需求的映射关系
+
+9.1 学习 / 工作监督
+依赖：
+- UserState.attention
+- FocusState
+- Event.user_text
+- Event.timer_tick
+- Action.speak / display / start_timer / stop_timer
+
+9.2 情绪识别分析
+依赖：
+- UserState.emotion
+- UserState.emotion_confidence
+- Event.state_update
+- CooldownState
+- Action.speak / display
+
+9.3 数据统计分析
+依赖：
+- MemoryState.focus_sessions
+- MemoryState.recent_events
+- MemoryState.recent_messages
+- 后续可扩展 daily_summary
+
+9.4 环境感知
+依赖：
+- EnvironmentState
+- Event.state_update
+- CooldownState
+- Action.display / speak
+
+9.5 时间管理
+依赖：
+- FocusState
+- Event.user_text
+- Event.timer_tick
+- Action.start_timer / stop_timer / display / speak
+
+9.6 屏幕状态表达
+依赖：
+- InteractionState.mode
+- InteractionState.dialogue_state
+- FocusState.active
+- UserState.presence
+- UserState.attention
+- Action.display
+
+十、当前版本的边界
+
+10.1 当前版本已覆盖的内容
+
+1. 软件核心运行时的统一抽象；
+2. 面向 MVP 的最小状态、事件和动作设计；
+3. 对专注模式、基础交互、mock 状态更新和简单主动提醒的支撑；
+4. 对后续硬件接入保留清晰接口边界。
+
+10.2 当前版本暂不覆盖的内容
+
+1. 多 Agent 协作机制；
+2. 复杂记忆分层；
+3. 复杂数据库表结构；
+4. 细粒度权限模式；
+5. 复杂插件 / MCP / Tool Registry 体系；
+6. 真实语音 / 显示 / 灯光设备驱动。
+
+十一、后续扩展方向
+
+在当前 V1 版本稳定运行后，可按以下方向扩展：
+
+1. 扩展 State
+- 增加 daily_summary
+- 增加 emotion_timeline
+- 增加 environment_history
+- 增加 task_context
+- 增加 user_preferences
+
+2. 扩展 Event
+- 增加 wakeup_detected
+- 增加 asr_result
+- 增加 llm_response
+- 增加 sensor_update
+- 增加 display_timeout
+
+3. 扩展 Action
+- 增加 light
+- 增加 update_avatar
+- 增加 play_sound
+- 增加 save_report
+- 增加 notify_user
+
+4. 扩展存储层
+- 从 JSON 升级到 SQLite
+- 将 recent_events / focus_sessions 等分离持久化
+- 增加日报 / 周报结构
+
+5. 扩展决策层
+- 增加更细粒度的策略规则
+- 接入 LLM 生成更自然的回复
+- 将当前单体 policy 拆分为策略子模块
+
+十二、结论
+
+本运行时模型设计旨在为当前项目的软件核心提供统一、简洁、可扩展的基础抽象。通过将系统统一表达为 State、Event、Action 三类模型，可以在不依赖真实硬件的前提下，先完成状态管理、事件驱动、规则决策和动作输出的核心闭环。
+
+当前 V1 版本重点服务于以下目标：
+
+1. 快速实现可运行的 MVP；
+2. 支撑团队并行推进代码与硬件部分；
+3. 为后续视觉、语音、环境传感器、显示与灯光模块接入提供稳定边界；
+4. 为后续数据库、总结能力、大模型接入预留自然扩展路径。
+
+因此，V1 版本推荐采用：
+- 分组式 AgentState
+- 最小事件模型 Event
+- 最小动作模型 Action
+
+以“先跑通、再增强”为原则，逐步迭代为完整的桌面智能陪伴 Agent 软件运行时。

@@ -67,10 +67,11 @@ class ActionRealizer:
 
         if intent.type == "answer_user":
             text = _response_text(intent, response) or self.copy_policy.fallback_answer_text
-            return [
-                speak(text, reason=intent.reason),
-                display(response.display_text or text, reason=intent.reason),
-            ]
+            actions: list[Action] = []
+            if not response.already_spoken:
+                actions.append(speak(text, reason=intent.reason))
+            actions.append(display(response.display_text or text, reason=intent.reason))
+            return actions
 
         if intent.type == "start_focus":
             event_default = _clamp_int(

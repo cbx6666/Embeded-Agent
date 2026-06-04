@@ -77,7 +77,7 @@ class DecisionPipeline:
         )
         trace = RuntimeTrace()
         trace.add("agent_context", "built", context=context.to_prompt_dict())
-        ignored_reason = self._ignored_system_trigger_reason(event)
+        ignored_reason = self._ignored_llm_reason(event)
         if ignored_reason:
             trace.add(
                 "validator",
@@ -93,7 +93,11 @@ class DecisionPipeline:
             self.last_result = result
             return result
 
-        agent_run = self.orchestrator.decide(context, llm_service)
+        agent_run = self.orchestrator.decide(
+            context,
+            llm_service,
+            llm_mode=self.decision_policy.llm_mode,
+        )
         for role_name, meta in agent_run.stage_metadata.items():
             if not isinstance(meta, dict):
                 continue
@@ -163,6 +167,11 @@ class DecisionPipeline:
         )
         self.last_result = result
         return result
+
+    def _ignored_llm_reason(self, event: Event) -> str | None:
+        if event.type in self.decision_policy.llm_skipped_event_types:
+            return f"voice pipeline event skipped before dialogue: {event.type}"
+        return self._ignored_system_trigger_reason(event)
 
     def _ignored_system_trigger_reason(self, event: Event) -> str | None:
         if event.type != "system_triggered":
