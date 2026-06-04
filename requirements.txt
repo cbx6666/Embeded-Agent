@@ -6,6 +6,11 @@ pygame>=2.5.0
 # 语音模块（--voice 可选，跨平台录音依赖 sounddevice）
 sounddevice>=0.4.6
 
+# Sherpa-ONNX 固定唤醒词（--wake-backend sherpa-onnx，默认）
+sherpa-onnx>=1.10.0
+pypinyin>=0.50.0
+sentencepiece>=0.2.0
+
 # 表情识别（默认 DeepFace；会拉取 TensorFlow 等，安装较慢）
 deepface>=0.0.90
 # TensorFlow 2.16+ 时 retinaface/DeepFace 需要（否则 import deepface 可能报缺 tf-keras）

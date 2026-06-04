@@ -9,12 +9,13 @@ from __future__ import annotations
 """
 
 import os
-import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 
+from src.adapters.voice.audio_playback import play_wav_file
 from src.adapters.voice.baidu_asr_backend import _load_simple_env_file
 
 
@@ -37,6 +38,8 @@ class BaiduTTSBackend:
         default_pitch: int = 5,
         timeout_sec: float = 20.0,
         player_command: str = "aplay",
+        alsa_playback_device: str | None = None,
+        prefer_capture_device: str | None = None,
         env_path: str | Path | None = None,
     ) -> None:
         env_values = _load_simple_env_file(env_path)
@@ -70,6 +73,8 @@ class BaiduTTSBackend:
         self.timeout_sec = float(timeout_sec)
         # player_command="auto" 时根据平台选择默认值，Windows 不依赖外部 aplay
         self.player_command = player_command
+        self.alsa_playback_device = (alsa_playback_device or "").strip() or None
+        self.prefer_capture_device = (prefer_capture_device or "").strip() or None
 
     def speak(self, text: str, *, voice: str | None, volume: int | None, speed: float | None) -> None:
         if not self.is_configured():
@@ -110,66 +115,21 @@ class BaiduTTSBackend:
             detail = body.decode("utf-8", errors="ignore")
             raise RuntimeError(f"百度 TTS 未返回音频: {detail}")
 
-        self.output_path.write_bytes(body)
-        self._play_audio()
-
-    def _play_audio(self) -> None:
-        """跨平台播放音频文件。
-
-        播放前先用 amixer（Linux）将 PCM 音量调到最大，解决板级设备音量偏小的问题。
-        优先级：aplay（Linux）> sounddevice > winsound（Windows）> afplay（macOS）。
-        """
-        import platform
-        system = platform.system()
-        player_cmd = self.player_command
-
-        # ---- 1. sounddevice（跨平台） ----
+        play_path = self.output_path.parent / f"tts_{uuid.uuid4().hex[:10]}.wav"
+        play_path.write_bytes(body)
         try:
-            import sounddevice as sd
-            import wave
-            with wave.open(str(self.output_path), "rb") as wf:
-                rate = wf.getframerate()
-                n_frames = wf.getnframes()
-                data = wf.readframes(n_frames)
-            import numpy as np
-            audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            sd.play(audio, samplerate=rate)
-            sd.wait()
-            return
-        except Exception:
-            pass
-
-        # ---- 2. Windows winsound ----
-        if system == "Windows":
-            try:
-                import winsound
-                winsound.PlaySound(str(self.output_path), winsound.SND_FILENAME)
-                return
-            except Exception:
-                pass
-
-        # ---- 3. macOS afplay ----
-        if system == "Darwin":
-            try:
-                subprocess.run(["afplay", str(self.output_path)], check=True, capture_output=True)
-                return
-            except Exception:
-                pass
-
-        # ---- 4. Linux / 通用 aplay ----
-        if player_cmd and player_cmd != "auto":
-            subprocess.run([player_cmd, str(self.output_path)], check=True, capture_output=True)
-        else:
-            for cmd in ("aplay", "paplay", "ffplay"):
-                try:
-                    subprocess.run([cmd, str(self.output_path)], check=True, capture_output=True)
-                    return
-                except Exception:
-                    pass
-            raise RuntimeError(
-                f"无法播放音频文件 {self.output_path}，请安装音频播放器 "
-                "（Linux: alsa-utils/paprefs, Windows: 已内置 winsound, macOS: afplay）"
+            play_wav_file(
+                play_path,
+                alsa_playback_device=self.alsa_playback_device,
+                prefer_capture_device=self.prefer_capture_device,
+                player_command=self.player_command,
             )
+        finally:
+            try:
+                play_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self.output_path.write_bytes(body)
 
     def set_voice(self, voice_id: str) -> None:
         self.voice_id = str(voice_id)

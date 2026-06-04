@@ -7,6 +7,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.adapters.perception_config import emotion_every_n_frames, vision_target_fps
+
+# WuJie FER2013 VGG19 静态 OM（Ascend NPU 部署）
+DEFAULT_WUJIE_OM_MODEL = "models/wujie/wujie_vgg19_static.om"
+
 
 @dataclass(frozen=True)
 class VisionAffectConfig:
@@ -39,11 +44,11 @@ class VisionAffectConfig:
     force_high_eye_perclos: float = 0.55
     force_moderate_eye_perclos: float = 0.35
 
-    # --- 采集节奏 ---
-    target_fps: float = 8.0
+    # --- 采集节奏（与 `perception_config.PERCEPTION_HZ` 对齐，默认 4 Hz）---
+    target_fps: float = vision_target_fps()
 
-    # --- 情绪：每 N 帧推理一次（降载）---
-    emotion_every_n_frames: int = 4
+    # --- 情绪：每 N 帧推理一次（4 Hz 下默认 N=4 → ~1 次/秒 OM）---
+    emotion_every_n_frames: int = emotion_every_n_frames()
     emotion_min_emit_interval_sec: float = 1.5
 
     # --- MediaPipe Face Mesh ---

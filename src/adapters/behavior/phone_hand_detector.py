@@ -52,6 +52,9 @@ class PhoneHandFrameResult:
     looking_down: bool = False
     head_down_assist: bool = False
     """未检出手机时，靠 Face Mesh 低头+手腕区域辅助判分心。"""
+    posture: str = "unknown"
+    activity: str = "unknown"
+    posture_confidence: float = 0.0
 
 
 def _point_to_bbox_distance(px: float, py: float, box: PhoneBox) -> float:
@@ -207,6 +210,7 @@ class PhoneHandProximityDetector:
         self._positive_since: float | None = None
         self._detect_om_path = Path(detect_om) if detect_om else None
         self._pose_om_path = Path(pose_om) if pose_om else None
+        self._last_primary_person: Any = None
 
     def _resolve_backend(self) -> str:
         if self._backend_resolved:
@@ -281,14 +285,15 @@ class PhoneHandProximityDetector:
             self.load_models()
 
     def _analyze_frame_impl(self, frame_bgr: np.ndarray) -> PhoneHandFrameResult:
+        primary_person = None
         if self._resolve_backend() == "om":
             assert self._om_runner is not None
-            phones, wrists, kpt_conf, person_pose = self._om_runner.infer_phones_and_wrists(
+            phones, wrists, kpt_conf, person_pose, primary_person = self._om_runner.infer_phones_and_wrists(
                 frame_bgr
             )
         else:
             phones = self._detect_phones(frame_bgr)
-            wrists, kpt_conf, person_pose = self._detect_wrists(frame_bgr)
+            wrists, kpt_conf, person_pose, primary_person = self._detect_wrists(frame_bgr)
         person_visible = person_pose > 0
         phase = self._presence.update(person_visible)
         near_strict = _wrists_near_any_phone(
@@ -332,6 +337,16 @@ class PhoneHandProximityDetector:
             conf = min(p.confidence for p in phones)
         elif head_down_assist and instant:
             conf = max(0.45, min(0.75, 0.45 + head_hint.down_ratio))
+        from src.adapters.behavior.pose_inference import infer_posture_and_activity
+
+        posture, activity, posture_conf = infer_posture_and_activity(
+            person=primary_person,
+            person_visible=person_visible,
+            presence_phase=phase,
+            phone_in_hand=instant,
+            looking_down=bool(getattr(head_hint, "looking_down", False)),
+        )
+        self._last_primary_person = primary_person
         return PhoneHandFrameResult(
             phone_in_hand=instant,
             confidence=conf,
@@ -346,6 +361,9 @@ class PhoneHandProximityDetector:
             wrist_count=len(wrists),
             looking_down=head_hint.looking_down,
             head_down_assist=head_down_assist,
+            posture=posture,
+            activity=activity,
+            posture_confidence=posture_conf,
         )
 
     def _analyze_head_down(self, frame_bgr: np.ndarray) -> Any:
@@ -425,6 +443,8 @@ class PhoneHandProximityDetector:
 
     def analyze_frame_stable(self, frame_bgr: np.ndarray) -> PhoneHandFrameResult:
         """带 hold_seconds 时间窗的稳定判定。"""
+        from src.adapters.behavior.pose_inference import infer_posture_and_activity
+
         result = self.analyze_frame(frame_bgr)
         now = time.time()
         if result.phone_in_hand:
@@ -437,6 +457,16 @@ class PhoneHandProximityDetector:
         else:
             self._positive_since = None
             result.phone_in_hand = False
+        posture, activity, posture_conf = infer_posture_and_activity(
+            person=self._last_primary_person,
+            person_visible=result.person_visible,
+            presence_phase=result.presence_phase,
+            phone_in_hand=result.phone_in_hand,
+            looking_down=result.looking_down,
+        )
+        result.posture = posture
+        result.activity = activity
+        result.posture_confidence = posture_conf
         return result
 
     def _detect_phones(self, frame_bgr: np.ndarray) -> list[PhoneBox]:
@@ -467,7 +497,9 @@ class PhoneHandProximityDetector:
 
     def _detect_wrists(
         self, frame_bgr: np.ndarray
-    ) -> tuple[list[tuple[float, float]], list[float] | None, int]:
+    ) -> tuple[list[tuple[float, float]], list[float] | None, int, Any | None]:
+        from src.adapters.vision_common.yolo_ultralytics_ops import PosePerson
+
         assert self._pose_model is not None
         out = self._pose_model.predict(
             source=frame_bgr,
@@ -479,8 +511,10 @@ class PhoneHandProximityDetector:
         wrists: list[tuple[float, float]] = []
         confs: list[float] = []
         person_count = 0
+        primary: PosePerson | None = None
+        best_conf = -1.0
         if not out:
-            return wrists, None, person_count
+            return wrists, None, person_count, primary
         for r in out:
             if r.keypoints is None:
                 continue
@@ -496,10 +530,17 @@ class PhoneHandProximityDetector:
                 kc = None
                 if kcf_np is not None and person_idx < len(kcf_np):
                     kc = kcf_np[person_idx]
+                box_conf = 0.5
+                if getattr(r, "boxes", None) is not None and r.boxes is not None and person_idx < len(r.boxes):
+                    box_conf = float(r.boxes.conf[person_idx])
+                if box_conf > best_conf:
+                    best_conf = box_conf
+                    kc_arr = kc if kc is not None else np.ones(len(pts))
+                    primary = PosePerson(keypoints_xy=pts, keypoints_conf=kc_arr, box_conf=box_conf)
                 w, c = _collect_visible_wrists(pts, kc, min_kpt_conf=self.min_kpt_conf)
                 wrists.extend(w)
                 confs.extend(c)
-        return wrists, confs if confs else None, person_count
+        return wrists, confs if confs else None, person_count, primary
 
 
 def dependencies_met() -> bool:

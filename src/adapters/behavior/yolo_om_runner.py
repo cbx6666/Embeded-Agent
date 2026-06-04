@@ -63,12 +63,12 @@ class YoloOmPhonePoseRunner:
 
     def infer_phones_and_wrists(
         self, frame_bgr: np.ndarray
-    ) -> tuple[list[PhoneBox], list[tuple[float, float]], list[float], int]:
+    ) -> tuple[list[PhoneBox], list[tuple[float, float]], list[float], int, PosePerson | None]:
         tensor, meta = letterbox_bgr_for_yolo(frame_bgr, self.imgsz)
         det_flat = self._detect.execute(tensor)
         pose_flat = self._pose.execute(tensor)
         if det_flat is None or pose_flat is None:
-            return [], [], [], 0
+            return [], [], [], 0, None
 
         # detect OM 只解手机；人在场由 pose OM 判断
         decode_conf = min(0.2, self.phone_conf)
@@ -95,7 +95,8 @@ class YoloOmPhonePoseRunner:
         for person in people:
             self._append_wrist(person, KP_LEFT_WRIST, wrists, confs, self.min_kpt_conf)
             self._append_wrist(person, KP_RIGHT_WRIST, wrists, confs, self.min_kpt_conf)
-        return phones, wrists, confs, len(people)
+        primary = max(people, key=lambda p: p.box_conf) if people else None
+        return phones, wrists, confs, len(people), primary
 
     @staticmethod
     def _append_wrist(

@@ -1,3 +1,4 @@
+from src.adapters.behavior.camera_utils import LatestFrameBus
 from src.adapters.behavior.phone_camera_adapter import PhoneHandCameraAdapter
 from src.adapters.behavior.phone_hand_detector import (
     PhoneHandFrameResult,
@@ -6,6 +7,7 @@ from src.adapters.behavior.phone_hand_detector import (
 )
 
 __all__ = [
+    "LatestFrameBus",
     "PhoneHandCameraAdapter",
     "PhoneHandFrameResult",
     "PhoneHandProximityDetector",

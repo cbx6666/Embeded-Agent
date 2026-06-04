@@ -89,6 +89,10 @@ def _fake_complete_json(role: str, prompt: str) -> str:
             text = "已开始专注。"
         return json.dumps({"speak_text": text, "display_text": text, "tone": "calm"}, ensure_ascii=False)
 
+    if role == "fast_dialogue":
+        text = _fast_dialogue_reply_from_prompt(prompt)
+        return json.dumps({"speak_text": text, "display_text": text, "tone": "calm"}, ensure_ascii=False)
+
     if role == "memory_observer":
         context = _context_from_prompt(prompt)
         event = context.get("event", {}) if isinstance(context, dict) else {}
@@ -113,16 +117,31 @@ def _fake_complete_json(role: str, prompt: str) -> str:
     return "{}"
 
 
+def _fast_dialogue_reply_from_prompt(prompt: str) -> str:
+    context = _context_from_prompt(prompt)
+    state = context.get("state", {}) if isinstance(context, dict) else {}
+    focus = state.get("focus", {}) if isinstance(state, dict) else {}
+    if isinstance(focus, dict) and focus.get("active"):
+        remaining = focus.get("remaining_sec", 0)
+        return f"你还在专注中，大约还剩 {remaining} 秒。"
+    return "好的，我在。"
+
+
 def _context_from_prompt(prompt: str) -> dict[str, Any]:
-    marker = "Context JSON:\n"
-    start = prompt.rfind(marker)
-    if start == -1:
-        return _extract_context_json(prompt)
-    try:
-        data = json.loads(prompt[start + len(marker) :])
-    except json.JSONDecodeError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    for marker in ("Context JSON:\n", "## 结构化上下文 JSON\n"):
+        start = prompt.rfind(marker)
+        if start == -1:
+            continue
+        chunk = prompt[start + len(marker) :]
+        if marker.startswith("##"):
+            chunk = chunk.split("\n\n## 用户本轮输入", 1)[0].strip()
+        try:
+            data = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return _extract_context_json(prompt)
 
 
 def _extract_context_json(prompt: str) -> dict[str, Any]:
@@ -135,7 +154,9 @@ def _extract_context_json(prompt: str) -> dict[str, Any]:
             data, _ = decoder.raw_decode(prompt[index:])
         except json.JSONDecodeError:
             continue
-        if isinstance(data, dict) and "event" in data and "user_id" in data:
+        if not isinstance(data, dict) or "event" not in data:
+            continue
+        if "user_id" in data or "state" in data:
             candidate = data
     return candidate or {}
 

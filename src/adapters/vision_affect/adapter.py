@@ -10,10 +10,12 @@
 
 from __future__ import annotations
 
+import queue
 import sys
 import threading
 import time
 import traceback
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from src.agent.event import (
@@ -94,9 +96,9 @@ def vision_emotion_backend_ready(config: VisionAffectConfig) -> bool:
         if not p or not Path(p).is_file():
             return False
         try:
-            from src.adapters.vision_affect.backends.wujie_om import _import_acl
+            from src.adapters.vision_common.acl_runtime import import_acl
 
-            _import_acl()
+            import_acl()
             import cv2  # noqa: F401
         except Exception:
             return False
@@ -110,12 +112,21 @@ def vision_emotion_backend_ready(config: VisionAffectConfig) -> bool:
     return True
 
 
+@dataclass
+class _EmotionJob:
+    """后台情绪推理任务（人脸 crop 副本，避免与采集线程共享内存）。"""
+
+    crop: Any
+    timestamp_sec: int
+
+
 class VisionAffectInputAdapter:
     """后台线程跑检测逻辑，只向 sink 发 `user_fatigue_updated` / `user_emotion_updated`。"""
 
-    def __init__(self, sink: EventEmitSink, config: VisionAffectConfig) -> None:
+    def __init__(self, sink: EventEmitSink, config: VisionAffectConfig, *, frame_bus: object | None = None) -> None:
         self._sink = sink
         self._cfg = config
+        self._frame_bus = frame_bus
         self._ear_threshold = config.ear_threshold
         self._mar_yawn_threshold = config.mar_yawn_threshold
         self._perclos = PercLosWindow(config.perclos_window_sec)
@@ -124,11 +135,18 @@ class VisionAffectInputAdapter:
         self._emotion_backend: EmotionInferenceBackend = build_emotion_backend(config)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._emotion_worker: threading.Thread | None = None
+        self._emotion_queue: queue.Queue[_EmotionJob | None] = queue.Queue(maxsize=1)
+        self._emotion_lock = threading.Lock()
+        self._last_emotion_submit_mono: float = 0.0
         self._last_fatigue_level: FatigueLevel = "none"
         self._last_frame_monotonic: float | None = None
         self._eye_closed_streak_sec: float = 0.0
+        self._last_eye_perclos: float = 0.0
+        self._last_yawn_ratio: float = 0.0
         self._frame_counter = 0
         self._emotion_every_n = max(1, config.emotion_every_n_frames)
+        self._emotion_async_enabled = self._emotion_backend.available()
         # 每秒聚合按模块拆分，便于后续扩展行为统计
         self._fatigue_second_stats = FatigueSecondStats()
         self._emotion_second_stats = EmotionSecondStats()
@@ -162,11 +180,13 @@ class VisionAffectInputAdapter:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
+        self._start_emotion_worker()
         self._thread = threading.Thread(target=self._run_loop, name="vision-affect", daemon=True)
         self._thread.start()
 
     def stop(self, timeout: float = 3.0) -> None:
         self._stop.set()
+        self._stop_emotion_worker(timeout=timeout)
         if self._thread:
             self._thread.join(timeout=timeout)
             self._thread = None
@@ -189,6 +209,10 @@ class VisionAffectInputAdapter:
 
         cap = cv2.VideoCapture(self._cfg.camera_index)
         if not cap.isOpened():
+            from src.adapters.behavior.camera_utils import open_camera
+
+            cap = open_camera(self._cfg.camera_index)
+        if not cap.isOpened():
             print(
                 f"[vision_affect] 无法打开摄像头 index={self._cfg.camera_index}",
                 file=sys.stderr,
@@ -207,6 +231,11 @@ class VisionAffectInputAdapter:
                 if not ok:
                     time.sleep(0.05)
                     continue
+                if self._frame_bus is not None:
+                    try:
+                        self._frame_bus.publish(frame)
+                    except Exception:
+                        pass
                 h, w = frame.shape[:2]
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 res = face_mesh.process(rgb)
@@ -248,21 +277,18 @@ class VisionAffectInputAdapter:
                     # 眼部闭合占比明显升高时，至少给到 moderate，避免长闭眼仅 mild。
                     new_level = "moderate"
                 self._last_fatigue_level = new_level
-                ready_fatigue = self._fatigue_second_stats.push(now_sec, new_level, combined)
-                if ready_fatigue is not None:
-                    self._emit_fatigue_second_summary(ready_fatigue)
+                self._last_eye_perclos = eye_p
+                self._last_yawn_ratio = yawn_p
+                for summary in self._fatigue_second_stats.push(now_sec, new_level, combined):
+                    self._emit_fatigue_second_summary(
+                        summary,
+                        eye_perclos=self._last_eye_perclos,
+                        yawn_ratio=self._last_yawn_ratio,
+                    )
 
                 self._frame_counter += 1
-                if self._frame_counter % self._emotion_every_n == 0:
-                    pr = self._infer_emotion(frame, lm, w, h)
-                    if not pr.is_empty:
-                        if pr.raf_label_id is not None:
-                            key = f"raf:{pr.raf_label_id}"
-                        else:
-                            key = f"emo:{pr.agent_emotion}"
-                        ready_emotion = self._emotion_second_stats.push(now_sec, key, pr.confidence)
-                        if ready_emotion is not None:
-                            self._emit_emotion_second_summary(ready_emotion)
+                if self._emotion_async_enabled and self._frame_counter % self._emotion_every_n == 0:
+                    self._submit_emotion_job(frame, lm, w, h, now_sec)
 
                 self._sleep_remainder(t0)
         finally:
@@ -305,22 +331,91 @@ class VisionAffectInputAdapter:
             )
         )
 
-    def _infer_emotion(
-        self,
-        frame_bgr,
-        landmarks,
-        w: int,
-        h: int,
-    ) -> EmotionPredictResult:
-        if not self._emotion_backend.available():
-            return EmotionPredictResult()
+    def _start_emotion_worker(self) -> None:
+        if not self._emotion_async_enabled:
+            return
+        if self._emotion_worker is not None and self._emotion_worker.is_alive():
+            return
+        self._emotion_worker = threading.Thread(
+            target=self._emotion_worker_loop,
+            name="vision-affect-emotion",
+            daemon=True,
+        )
+        self._emotion_worker.start()
+
+    def _stop_emotion_worker(self, timeout: float = 3.0) -> None:
+        if self._emotion_worker is None:
+            return
+        try:
+            self._emotion_queue.put_nowait(None)
+        except queue.Full:
+            try:
+                self._emotion_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._emotion_queue.put_nowait(None)
+            except queue.Full:
+                pass
+        self._emotion_worker.join(timeout=timeout)
+        self._emotion_worker = None
+
+    def _submit_emotion_job(self, frame_bgr, landmarks, w: int, h: int, timestamp_sec: int) -> None:
+        if not self._emotion_async_enabled:
+            return
+        now_mono = monotonic_ts()
+        min_gap = float(self._cfg.emotion_min_emit_interval_sec)
+        if now_mono - self._last_emotion_submit_mono < min_gap:
+            return
         x1, y1, x2, y2 = face_bbox_from_landmarks(landmarks, w, h)
         crop = frame_bgr[y1:y2, x1:x2]
         if crop.size == 0:
-            return EmotionPredictResult()
-        return self._emotion_backend.predict(crop)
+            return
+        self._last_emotion_submit_mono = now_mono
+        job = _EmotionJob(crop=crop.copy(), timestamp_sec=int(timestamp_sec))
+        try:
+            self._emotion_queue.put_nowait(job)
+        except queue.Full:
+            try:
+                self._emotion_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._emotion_queue.put_nowait(job)
+            except queue.Full:
+                pass
 
-    def _emit_fatigue_second_summary(self, summary: FatigueSecondSummary) -> None:
+    def _emotion_worker_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                job = self._emotion_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if job is None:
+                break
+            try:
+                pr = self._emotion_backend.predict(job.crop)
+            except Exception as exc:
+                print(f"[vision_affect] 情绪推理失败: {exc}", file=sys.stderr)
+                continue
+            if pr.is_empty:
+                continue
+            if pr.raf_label_id is not None:
+                key = f"raf:{pr.raf_label_id}"
+            else:
+                key = f"emo:{pr.agent_emotion}"
+            result_sec = int(time.time())
+            with self._emotion_lock:
+                for summary in self._emotion_second_stats.push(result_sec, key, pr.confidence):
+                    self._emit_emotion_second_summary(summary)
+
+    def _emit_fatigue_second_summary(
+        self,
+        summary: FatigueSecondSummary,
+        *,
+        eye_perclos: float | None = None,
+        yawn_ratio: float | None = None,
+    ) -> None:
         if self._fatigue_state_store is not None:
             try:
                 self._fatigue_state_store.record_second_state(
@@ -331,11 +426,14 @@ class VisionAffectInputAdapter:
                 )
             except Exception as exc:
                 print(f"[vision_affect] 疲劳状态写入 SQLite 失败: {exc}", file=sys.stderr)
+        yawn_flag = None
+        if yawn_ratio is not None:
+            yawn_flag = float(yawn_ratio) >= float(self._cfg.yawn_flag_min_ratio)
         self._emit_fatigue(
             summary.fatigue_level,
-            perclos=None,
-            yawn_ratio=None,
-            yawn_in_window=None,
+            perclos=eye_perclos,
+            yawn_ratio=yawn_ratio,
+            yawn_in_window=yawn_flag,
             confidence=summary.avg_confidence,
             timestamp=summary.timestamp,
         )
