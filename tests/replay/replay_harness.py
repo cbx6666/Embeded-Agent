@@ -54,6 +54,9 @@ def replay_event_log(
             trace_json_by_event: list[str] = []
             for event in events:
                 actions, _ = core.handle_event(event)
+                # 回放按“单事件处理完成且后台记忆已静默”的节奏推进，避免结果受到
+                # 操作系统线程调度时机影响；生产路径不会进行这类等待。
+                core.memory_worker.wait_for_idle(timeout=5)
                 actions_by_event.append(tuple(_action_snapshot(action) for action in actions))
                 trace_json_by_event.append(core.last_runtime_trace.to_json(indent=None) if core.last_runtime_trace else "")
             return ReplayResult(tuple(actions_by_event), tuple(trace_json_by_event))

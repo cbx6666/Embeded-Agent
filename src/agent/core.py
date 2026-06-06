@@ -42,8 +42,9 @@ from src.agent.decision.decision_result import DecisionResult
 from src.agent.decision.guard import DeterministicGuard
 from src.agent.decision.intent_model import AgentIntent
 from src.agent.event import Event
+from src.agent.memory.memory_background_worker import MemoryBackgroundWorker
+from src.agent.memory.memory_gate import should_process_action_memory, should_process_event_memory
 from src.agent.memory.long_term_memory_pipeline import LongTermMemoryPipeline
-from src.agent.memory.long_term_memory_pipeline import LongTermMemoryRunResult
 from src.agent.reducer import reduce_state
 from src.agent.execution.action_result import ActionResult
 from src.agent.execution.device_adapter import DeviceAdapter
@@ -71,6 +72,7 @@ class AgentCore:
         long_term_memory_pipeline: LongTermMemoryPipeline | None = None,
         personal_context_builder: PersonalContextBuilder | None = None,
         decision_pipeline: DecisionPipeline | None = None,
+        memory_worker: MemoryBackgroundWorker | None = None,
     ) -> None:
         self.output = output
         self.timer_service = timer_service
@@ -90,6 +92,10 @@ class AgentCore:
             user_profile_service=UserProfileService(UserProfileStore(_default_profile_store_path(store))),
         )
         self.decision_pipeline = decision_pipeline or DecisionPipeline()
+        self.memory_worker = memory_worker or MemoryBackgroundWorker(
+            self.long_term_memory_pipeline,
+            self.llm_service,
+        )
 
         self.state = AgentState.from_dict(self.store.load_state_dict())
         self.state.current_user_id = self._profile_service().ensure_user_id(self.state.current_user_id)
@@ -130,17 +136,22 @@ class AgentCore:
             self.runtime_history_service.record_event(self.state, event)
             self._record_user_message_if_needed(event)
 
-            memory_event_result = self.long_term_memory_pipeline.process_event(
-                self.state.current_user_id,
-                event,
-                self.state,
-                self.llm_service,
-            )
-            trace.add(
-                "memory_pipeline",
-                "event_processed",
-                result=_memory_result_to_dict(memory_event_result),
-            )
+            allow_event_memory, event_memory_reason = should_process_event_memory(event)
+            event_memory_user_id = self.state.current_user_id
+            event_memory_state = AgentState.from_dict(self.state.to_dict())
+            if not allow_event_memory:
+                trace.add(
+                    "memory_pipeline",
+                    "event_skipped",
+                    memory_event_gate_allowed=False,
+                    memory_event_skip_reason=event_memory_reason,
+                    memory_event_enqueued=False,
+                    memory_event_enqueue_error=None,
+                    memory_event_submit_result=None,
+                    memory_event_sync_called=False,
+                    memory_event_pipeline_called=False,
+                    memory_event_pipeline_called_sync=False,
+                )
 
             personal_context = self.personal_context_builder.build(
                 user_id=self.state.current_user_id,
@@ -165,20 +176,120 @@ class AgentCore:
                 results=[_action_result_to_dict(result) for result in results],
             )
 
-            memory_action_result = self.long_term_memory_pipeline.process_actions(
-                self.state.current_user_id,
-                actions,
-                event.timestamp,
-                action_results=results,
+            # 当前轮决策和动作执行完成后只提交后台任务，不等待 Memory Pipeline。
+            # 因此本轮 PersonalContext 不会读取到本轮刚产生的长期记忆。
+            if allow_event_memory:
+                try:
+                    submit_result = self.memory_worker.submit_event_memory(
+                        user_id=event_memory_user_id,
+                        event=event,
+                        state=event_memory_state,
+                    )
+                except Exception as exc:
+                    submit_payload = {
+                        "accepted": False,
+                        "task_id": None,
+                        "reason": "submit_error",
+                        "queue_size": -1,
+                    }
+                    trace.add(
+                        "memory_pipeline",
+                        "event_enqueue_failed",
+                        memory_event_gate_allowed=True,
+                        memory_event_skip_reason="",
+                        memory_event_enqueued=False,
+                        memory_event_enqueue_error=str(exc),
+                        memory_event_submit_result=submit_payload,
+                        memory_event_sync_called=False,
+                        memory_event_pipeline_called=False,
+                        memory_event_pipeline_called_sync=False,
+                    )
+                else:
+                    submit_payload = submit_result.to_dict()
+                    trace.add(
+                        "memory_pipeline",
+                        "event_enqueued" if submit_result.accepted else "event_enqueue_failed",
+                        memory_event_gate_allowed=True,
+                        memory_event_skip_reason="",
+                        memory_event_enqueued=submit_result.accepted,
+                        memory_event_enqueue_error=(
+                            None if submit_result.accepted else submit_result.reason
+                        ),
+                        memory_event_submit_result=submit_payload,
+                        memory_event_sync_called=False,
+                        memory_event_pipeline_called=False,
+                        memory_event_pipeline_called_sync=False,
+                    )
+
+            allow_action_memory, action_memory_reason = should_process_action_memory(
+                actions=actions,
+                results=results,
                 source_event=event,
-                state=self.state,
-                llm_service=self.llm_service,
             )
-            if memory_action_result is not None:
+            # 动作记忆同样采用“只确认入队”的最终一致性语义；提交失败只进入
+            # trace，不得改变当前轮已经生成的响应和动作结果。
+            if allow_action_memory:
+                try:
+                    submit_result = self.memory_worker.submit_action_memory(
+                        user_id=self.state.current_user_id,
+                        actions=actions,
+                        timestamp=event.timestamp,
+                        action_results=results,
+                        source_event=event,
+                        state=self.state,
+                    )
+                except Exception as exc:
+                    submit_payload = {
+                        "accepted": False,
+                        "task_id": None,
+                        "reason": "submit_error",
+                        "queue_size": -1,
+                    }
+                    trace.add(
+                        "memory_pipeline",
+                        "action_enqueue_failed",
+                        memory_action_gate_allowed=True,
+                        memory_action_skip_reason="",
+                        memory_action_enqueued=False,
+                        memory_action_enqueue_error=str(exc),
+                        memory_action_submit_result=submit_payload,
+                        memory_action_sync_called=False,
+                        memory_action_pipeline_called_sync=False,
+                        memory_async_submit_success=False,
+                        memory_async_submit_error=str(exc),
+                    )
+                else:
+                    submit_payload = submit_result.to_dict()
+                    trace.add(
+                        "memory_pipeline",
+                        "action_enqueued" if submit_result.accepted else "action_enqueue_failed",
+                        memory_action_gate_allowed=True,
+                        memory_action_skip_reason="",
+                        memory_action_enqueued=submit_result.accepted,
+                        memory_action_enqueue_error=(
+                            None if submit_result.accepted else submit_result.reason
+                        ),
+                        memory_action_submit_result=submit_payload,
+                        memory_action_sync_called=False,
+                        memory_action_pipeline_called_sync=False,
+                        memory_async_submit_success=submit_result.accepted,
+                        memory_async_submit_error=(
+                            None if submit_result.accepted else submit_result.reason
+                        ),
+                    )
+            else:
                 trace.add(
                     "memory_pipeline",
-                    "action_processed",
-                    result=_memory_result_to_dict(memory_action_result),
+                    "action_skipped",
+                    memory_action_gate_allowed=False,
+                    memory_action_skip_reason=action_memory_reason,
+                    memory_action_enqueued=False,
+                    memory_action_enqueue_error=None,
+                    memory_action_submit_result=None,
+                    memory_action_sync_called=False,
+                    memory_action_pipeline_called_sync=False,
+                    memory_async_submit_success=False,
+                    memory_async_submit_error=None,
                 )
 
             self.last_intents = decision_result.intents
@@ -282,6 +393,8 @@ class AgentCore:
 
     def shutdown(self) -> None:
         with self._lock:
+            # 先停止接收新的记忆任务并限时排空队列，再关闭其他运行时服务。
+            self.memory_worker.shutdown(timeout=5.0)
             self.timer_service.stop()
             self.store.save_state(self.state)
 
@@ -501,15 +614,6 @@ def _trace_state_summary(state: AgentState) -> dict[str, object]:
             "recent_actions": len(state.runtime_history.recent_actions),
         },
         "cooldowns": dict(state.cooldown.reminder_last_ts),
-    }
-
-
-def _memory_result_to_dict(result: LongTermMemoryRunResult) -> dict[str, object]:
-    return {
-        "candidates": [candidate.to_dict() for candidate in result.candidates],
-        "stored": [memory.to_dict() for memory in result.stored],
-        "rejected": list(result.rejected),
-        "stage_metadata": dict(result.stage_metadata),
     }
 
 

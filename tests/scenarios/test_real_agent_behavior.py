@@ -52,6 +52,7 @@ class RealAgentBehaviorScenarioTestCase(unittest.TestCase):
         core = self._build_core(llm)
         try:
             core.handle_event(Event(type="user_text_input", timestamp=100, payload={"text": user_text}))
+            core.memory_worker.wait_for_idle(timeout=2)
 
             memories = self.memory_store.list("default")
             self.assertEqual(len(memories), 1)

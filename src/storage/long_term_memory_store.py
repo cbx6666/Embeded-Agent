@@ -21,6 +21,7 @@ DecisionPipeline 直接读取。
 import hashlib
 import json
 import math
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,9 @@ class LongTermMemoryStore:
 
     def __init__(self, path: str | Path = "data/memory/long_term_memory.json") -> None:
         self.path = Path(path)
+        # 锁覆盖完整的“读取-修改-写入”事务，避免前台读取与后台 Worker 写入时
+        # 相互覆盖。使用 RLock 是因为公开方法会在持锁状态下调用 _load/_save。
+        self._lock = threading.RLock()
 
     def list(
         self,
@@ -48,23 +52,25 @@ class LongTermMemoryStore:
         时间得到一致的有效置信度。
         """
 
-        memories = self._load()
-        if now is not None and _apply_decay(memories, int(now)):
-            self._save(memories)
-        if not include_inactive:
-            memories = [item for item in memories if item.status == "active"]
-        if user_id is None:
-            return memories
-        return [item for item in memories if item.user_id == user_id]
+        with self._lock:
+            memories = self._load()
+            if now is not None and _apply_decay(memories, int(now)):
+                self._save(memories)
+            if not include_inactive:
+                memories = [item for item in memories if item.status == "active"]
+            if user_id is None:
+                return memories
+            return [item for item in memories if item.user_id == user_id]
 
     def apply_decay(self, *, now: int | None = None) -> list[LongTermMemory]:
         """显式刷新 decay，主要供维护任务和行为测试使用。"""
 
-        timestamp = int(time.time()) if now is None else int(now)
-        memories = self._load()
-        if _apply_decay(memories, timestamp):
-            self._save(memories)
-        return memories
+        with self._lock:
+            timestamp = int(time.time()) if now is None else int(now)
+            memories = self._load()
+            if _apply_decay(memories, timestamp):
+                self._save(memories)
+            return memories
 
     def upsert_candidate(
         self,
@@ -75,94 +81,98 @@ class LongTermMemoryStore:
     ) -> LongTermMemory:
         """写入或合并一条通过验证的候选记忆。"""
 
-        now = int(time.time()) if timestamp is None else int(timestamp)
-        memories = self._load()
-        memory_id = _canonical_behavior_preference_id(memories, user_id, candidate) or _memory_id(
-            user_id,
-            candidate.memory_type,
-            candidate.content,
-        )
-        contradicted_ids = _mark_contradictions(memories, user_id, candidate, now, memory_id)
+        with self._lock:
+            now = int(time.time()) if timestamp is None else int(timestamp)
+            memories = self._load()
+            memory_id = _canonical_behavior_preference_id(memories, user_id, candidate) or _memory_id(
+                user_id,
+                candidate.memory_type,
+                candidate.content,
+            )
+            contradicted_ids = _mark_contradictions(memories, user_id, candidate, now, memory_id)
 
-        for item in memories:
-            if item.id == memory_id:
-                merged_evidence = _merge_evidence(item.evidence, candidate.evidence)
-                item.confidence = _updated_confidence(
-                    base=item.confidence,
-                    candidate=candidate.confidence,
-                    new_evidence_count=max(0, len(merged_evidence) - len(item.evidence)),
-                )
-                item.evidence = merged_evidence
-                item.metadata.update(candidate.metadata)
-                if candidate.content and candidate.confidence >= item.confidence:
-                    item.content = candidate.content
-                if contradicted_ids:
-                    item.metadata["contradicts"] = contradicted_ids
-                item.updated_at = now
-                item.last_accessed_at = now
-                item.decay = 1.0
-                item.status = "active"
-                item.contradiction_of = _candidate_contradiction_of(candidate, contradicted_ids)
-                self._save(memories)
-                return item
+            for item in memories:
+                if item.id == memory_id:
+                    merged_evidence = _merge_evidence(item.evidence, candidate.evidence)
+                    item.confidence = _updated_confidence(
+                        base=item.confidence,
+                        candidate=candidate.confidence,
+                        new_evidence_count=max(0, len(merged_evidence) - len(item.evidence)),
+                    )
+                    item.evidence = merged_evidence
+                    item.metadata.update(candidate.metadata)
+                    if candidate.content and candidate.confidence >= item.confidence:
+                        item.content = candidate.content
+                    if contradicted_ids:
+                        item.metadata["contradicts"] = contradicted_ids
+                    item.updated_at = now
+                    item.last_accessed_at = now
+                    item.decay = 1.0
+                    item.status = "active"
+                    item.contradiction_of = _candidate_contradiction_of(candidate, contradicted_ids)
+                    self._save(memories)
+                    return item
 
-        stored = LongTermMemory(
-            id=memory_id,
-            user_id=user_id,
-            memory_type=candidate.memory_type,
-            content=candidate.content,
-            confidence=candidate.confidence,
-            evidence=list(candidate.evidence),
-            source=candidate.source,
-            metadata=dict(candidate.metadata),
-            created_at=now,
-            updated_at=now,
-            last_accessed_at=now,
-            contradiction_of=_candidate_contradiction_of(candidate, contradicted_ids),
-        )
-        if contradicted_ids:
-            stored.metadata["contradicts"] = contradicted_ids
-        memories.append(stored)
-        self._save(memories)
-        return stored
+            stored = LongTermMemory(
+                id=memory_id,
+                user_id=user_id,
+                memory_type=candidate.memory_type,
+                content=candidate.content,
+                confidence=candidate.confidence,
+                evidence=list(candidate.evidence),
+                source=candidate.source,
+                metadata=dict(candidate.metadata),
+                created_at=now,
+                updated_at=now,
+                last_accessed_at=now,
+                contradiction_of=_candidate_contradiction_of(candidate, contradicted_ids),
+            )
+            if contradicted_ids:
+                stored.metadata["contradicts"] = contradicted_ids
+            memories.append(stored)
+            self._save(memories)
+            return stored
 
     def replace_user_memories(self, user_id: str, memories: list[LongTermMemory]) -> None:
         """替换指定用户的长期记忆集合，供维护或迁移工具使用。"""
 
-        all_memories = [item for item in self._load() if item.user_id != user_id]
-        all_memories.extend(memories)
-        self._save(all_memories)
+        with self._lock:
+            all_memories = [item for item in self._load() if item.user_id != user_id]
+            all_memories.extend(memories)
+            self._save(all_memories)
 
     def _load(self) -> list[LongTermMemory]:
-        if not self.path.exists():
-            return []
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        raw = data.get("memories", [])
-        if not isinstance(raw, list):
-            return []
-        memories: list[LongTermMemory] = []
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
+        with self._lock:
+            if not self.path.exists():
+                return []
             try:
-                memories.append(LongTermMemory.from_dict(item))
-            except (TypeError, ValueError):
-                continue
-        return memories
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return []
+            raw = data.get("memories", [])
+            if not isinstance(raw, list):
+                return []
+            memories: list[LongTermMemory] = []
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    memories.append(LongTermMemory.from_dict(item))
+                except (TypeError, ValueError):
+                    continue
+            return memories
 
     def _save(self, memories: list[LongTermMemory]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "updated_at": int(time.time()),
-            "memories": [
-                item.to_dict()
-                for item in sorted(memories, key=lambda x: (x.user_id, x.memory_type, x.content))
-            ],
-        }
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "updated_at": int(time.time()),
+                "memories": [
+                    item.to_dict()
+                    for item in sorted(memories, key=lambda x: (x.user_id, x.memory_type, x.content))
+                ],
+            }
+            self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _memory_id(user_id: str, memory_type: str, content: str) -> str:
