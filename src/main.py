@@ -839,7 +839,6 @@ def main() -> None:
         output=output,
         decision_policy=DecisionPolicyConfig(llm_mode=args.llm_mode),
     )
-    # Scheduler 只产生低频 system_triggered 检查；是否进入 Rule/LLM 由 P1 policy 决定。
     core.start_autonomous_scheduler()
 
     if voice_adapter is not None:
