@@ -25,6 +25,7 @@ from src.agent.user.personal_context import PersonalContext
 from src.agent.event import Event
 from src.agent.memory.long_term_memory import LongTermMemory
 from src.agent.state import AgentState
+from src.agent.state.runtime_history import compact_signal_trends
 from src.services.user_profile_service import UserProfileService
 from src.storage.long_term_memory_store import LongTermMemoryStore
 
@@ -93,6 +94,7 @@ class PersonalContextBuilder:
         history = state.runtime_history
         recent_events = _decision_recent_events(history.recent_events, self.policy_config)
         cfg = self.policy_config
+        signal_summaries = compact_signal_trends(history.signal_trends)
         return {
             "recent_events": list(recent_events[-cfg.max_recent_events :]),
             "recent_messages": list(history.recent_messages[-cfg.max_recent_messages :]),
@@ -100,6 +102,15 @@ class PersonalContextBuilder:
             "attention_summary": list(history.attention_records[-cfg.max_recent_events :]),
             "environment_summary": list(history.environment_records[-cfg.max_recent_events :]),
             "emotion_summaries": list(history.emotion_summaries[-cfg.max_recent_events :]),
+            "signal_summaries": signal_summaries,
+            "fatigue_summary": signal_summaries.get("fatigue", {}),
+            "attention_trend_summary": signal_summaries.get("attention", {}),
+            "posture_summary": signal_summaries.get("posture", {}),
+            "activity_summary": signal_summaries.get("activity", {}),
+            "environment_trend_summary": {
+                name: signal_summaries.get(name, {})
+                for name in ("light", "temperature", "humidity", "noise")
+            },
         }
 
     def build(

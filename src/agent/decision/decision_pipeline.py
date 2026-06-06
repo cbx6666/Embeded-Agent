@@ -3,8 +3,8 @@ from __future__ import annotations
 """DecisionPipeline 决策流水线。
 
 它是什么：
-DecisionPipeline 是 Agent 高层决策入口。它只接收 Event、AgentState、PersonalContext
-和 LLMService，输出 DecisionResult。
+DecisionPipeline 是 Agent 高层决策入口。它接收 Event、AgentState，以及 LLM 路径
+可选的 PersonalContext/LLMService，输出 DecisionResult。
 
 它不是什么：
 它不读取 LongTermMemoryStore，不读取 UserProfileStore，不写 RuntimeHistory，不写
@@ -15,8 +15,8 @@ LongTermMemory，也不直接执行设备动作。
 PersonalContextBuilder，避免“决策层到处找记忆”的架构熵增。
 
 边界：
-内部顺序是 AgentContextBuilder -> LLMAgentOrchestrator -> IntentPlanValidator ->
-DeterministicGuard -> ActionRealizer。任何 LLM 输出都必须经过 validator/guard 后才能变成 Action。
+计划来源可以是 RuleIntentBuilder、UnifiedPlanner 或完整 Orchestrator；所有来源最终
+统一进入 DecisionPostProcessor，经过 Validator、Guard、ActionRealizer 后才能变成 Action。
 """
 
 from src.agent.config.policy_config import DecisionPolicyConfig
@@ -24,19 +24,22 @@ from src.agent.user.personal_context import PersonalContext
 from src.agent.decision.action_realizer import ActionRealizer
 from src.agent.decision.agent_context_builder import AgentContextBuilder
 from src.agent.decision.agent_context_builder import AgentContext
+from src.agent.decision.decision_post_processor import DecisionPostProcessor
 from src.agent.decision.decision_result import DecisionResult
 from src.agent.decision.guard import DeterministicGuard
-from src.agent.decision.intent_model import no_op_plan
+from src.agent.decision.intent_model import IntentPlan, no_op_plan
+from src.agent.decision.rule_intent_builder import RuleIntentBuilder
 from src.agent.decision.validator import IntentPlanValidator
 from src.agent.event import Event
 from src.agent.execution.trace import RuntimeTrace
 from src.agent.llm_agent import LLMAgentOrchestrator
+from src.agent.llm_agent.schemas import ResponseDraft
 from src.agent.state import AgentState
 from src.services.llm_service import LLMService
 
 
 class DecisionPipeline:
-    """LLM-centered 决策入口，只消费 PersonalContext。"""
+    """统一承接 Rule/LLM 计划来源的决策入口。"""
 
     def __init__(
         self,
@@ -46,6 +49,7 @@ class DecisionPipeline:
         validator: IntentPlanValidator | None = None,
         guard: DeterministicGuard | None = None,
         action_realizer: ActionRealizer | None = None,
+        rule_intent_builder: RuleIntentBuilder | None = None,
         decision_policy: DecisionPolicyConfig | None = None,
     ) -> None:
         self.context_builder = context_builder or AgentContextBuilder()
@@ -53,6 +57,12 @@ class DecisionPipeline:
         self.validator = validator or IntentPlanValidator()
         self.guard = guard or DeterministicGuard()
         self.action_realizer = action_realizer or ActionRealizer()
+        self.post_processor = DecisionPostProcessor(
+            validator=self.validator,
+            guard=self.guard,
+            action_realizer=self.action_realizer,
+        )
+        self.rule_intent_builder = rule_intent_builder or RuleIntentBuilder()
         self.decision_policy = decision_policy or DecisionPolicyConfig()
         self.last_result: DecisionResult | None = None
 
@@ -66,7 +76,7 @@ class DecisionPipeline:
         personal_context: PersonalContext | None = None,
         personalized_policy: object | None = None,
     ) -> DecisionResult:
-        """执行一轮 Event -> Intent -> Action 决策。"""
+        """执行开放语义事件的 LLM 决策。"""
 
         del personalized_policy
         context = self.context_builder.build(
@@ -111,59 +121,126 @@ class DecisionPipeline:
                 error=meta.get("error"),
                 skipped=bool(meta.get("skipped", False)),
             )
-        validation = self.validator.validate(agent_run.plan)
-        validation_errors = list(validation.errors)
-        trace.add(
-            "validator",
-            "intent_plan",
-            ok=not validation_errors,
-            errors=validation_errors,
-            plan=agent_run.plan.to_dict(),
-        )
-        plan = agent_run.plan
-        if validation_errors:
-            plan = no_op_plan("LLM intent plan failed validation.")
-
-        guard_decision = self.guard.filter(plan, context)
-        trace.add(
-            "guard",
-            "filtered",
-            findings=[finding.to_dict() for finding in guard_decision.findings],
-            blocked_intents=[intent.to_dict() for intent in guard_decision.blocked_intents],
-            allowed_intents=[intent.to_dict() for intent in guard_decision.allowed_intents],
-        )
-        actions = self.action_realizer.realize(
-            guard_decision.plan,
-            response=agent_run.response,
+        roles_called = _called_llm_roles(agent_run.stage_metadata)
+        result = self.post_processor.finalize(
+            plan=agent_run.plan,
             context=context,
-        )
-        trace.add("action_realizer", "realized", action_count=len(actions))
-        trace.add("action", "planned", actions=[_action_to_dict(action) for action in actions])
-
-        fallback_reason = agent_run.fallback_reason
-        if validation_errors:
-            suffix = "validation:" + ";".join(validation_errors)
-            fallback_reason = f"{fallback_reason};{suffix}" if fallback_reason else suffix
-
-        result = DecisionResult(
-            intents=guard_decision.plan.intents,
-            actions=actions,
-            blocked_intents=guard_decision.blocked_intents,
-            guard_results=guard_decision.findings,
+            decision_source="orchestrator",
             used_llm=agent_run.used_llm,
-            fallback_reason=fallback_reason,
-            decision_reason=guard_decision.plan.reasoning,
+            response=agent_run.response,
             situation=agent_run.situation,
             safety_review=agent_run.safety_review,
-            response=agent_run.response,
-            stage_metadata={
-                "context": context.to_prompt_dict(),
+            fallback_reason=agent_run.fallback_reason,
+            source_metadata={
                 "llm_roles": agent_run.stage_metadata,
-                "validator": {"ok": not validation_errors, "errors": validation_errors},
-                "guard": [finding.to_dict() for finding in guard_decision.findings],
-                "action_realizer": {"action_count": len(actions)},
-                "trace": trace.to_dict(),
+                "llm_mode": self.decision_policy.llm_mode,
+                "llm_roles_called": roles_called,
+                "llm_call_count": len(roles_called),
             },
+            trace=trace,
+        )
+        self.last_result = result
+        return result
+
+    def decide_structured(
+        self,
+        *,
+        previous_state: AgentState,
+        current_state: AgentState,
+        event: Event,
+    ) -> DecisionResult:
+        """让 P0B 结构化事件走 0 LLM 规则链。"""
+
+        context = self.context_builder.build(
+            previous_state=previous_state,
+            current_state=current_state,
+            event=event,
+            personal_context=None,
+        )
+        trace = RuntimeTrace()
+        trace.add("agent_context", "built", context=context.to_prompt_dict())
+
+        plan = self.rule_intent_builder.build(
+            event=event,
+            previous_state=previous_state,
+            current_state=current_state,
+            context=context,
+        )
+        if plan is None:
+            plan = no_op_plan(f"RuleIntentBuilder does not support event: {event.type}")
+
+        rule_reason = plan.reasoning
+        trace.add(
+            "rule_intent_builder",
+            "plan_built",
+            decision_source="rule_intent_builder",
+            structured_decision=True,
+            used_llm=False,
+            rule_event_type=event.type,
+            rule_reason=rule_reason,
+            plan=plan.to_dict(),
+        )
+
+        response = ResponseDraft()
+        result = self.post_processor.finalize(
+            plan=plan,
+            context=context,
+            decision_source="rule_intent_builder",
+            used_llm=False,
+            response=response,
+            source_metadata={
+                "structured_decision": True,
+                "rule_event_type": str(event.type),
+                "rule_reason": rule_reason,
+                "llm_mode": "none",
+                "llm_roles_called": [],
+                "llm_call_count": 0,
+            },
+            trace=trace,
+        )
+        self.last_result = result
+        return result
+
+    def decide_prebuilt(
+        self,
+        *,
+        previous_state: AgentState,
+        current_state: AgentState,
+        event: Event,
+        plan: IntentPlan,
+        decision_source: str,
+        source_metadata: dict[str, object] | None = None,
+    ) -> DecisionResult:
+        """让 P1 rule 等预构造计划复用统一后处理链。"""
+
+        context = self.context_builder.build(
+            previous_state=previous_state,
+            current_state=current_state,
+            event=event,
+            personal_context=None,
+        )
+        trace = RuntimeTrace()
+        trace.add("agent_context", "built", context=context.to_prompt_dict())
+        trace.add(
+            decision_source,
+            "plan_built",
+            decision_source=decision_source,
+            used_llm=False,
+            plan=plan.to_dict(),
+        )
+        result = self.post_processor.finalize(
+            plan=plan,
+            context=context,
+            decision_source=decision_source,
+            used_llm=False,
+            response=ResponseDraft(),
+            source_metadata={
+                **dict(source_metadata or {}),
+                "llm_mode": "none",
+                "llm_roles_called": [],
+                "llm_call_count": 0,
+            },
+            trace=trace,
         )
         self.last_result = result
         return result
@@ -203,8 +280,11 @@ def _ignored_decision_result(context: AgentContext, reason: str, *, trace: Runti
     )
 
 
-def _action_to_dict(action: object) -> dict[str, object]:
-    return {
-        "type": getattr(action, "type", ""),
-        "payload": dict(getattr(action, "payload", {}) or {}),
-    }
+def _called_llm_roles(stage_metadata: dict[str, object]) -> list[str]:
+    """提取真实发起过调用的角色，跳过条件关闭的阶段。"""
+
+    return [
+        str(role)
+        for role, metadata in stage_metadata.items()
+        if not (isinstance(metadata, dict) and metadata.get("skipped"))
+    ]

@@ -6,9 +6,14 @@ from pathlib import Path
 
 from src.agent.config.policy_config import (
     ActionPolicyConfig,
+    AutonomousCheckPolicyConfig,
+    AutonomousScheduleConfig,
     ContextPolicyConfig,
     CopyPolicyConfig,
+    EventRoutingPolicyConfig,
     GuardPolicyConfig,
+    MemoryGatePolicyConfig,
+    RuleIntentPolicyConfig,
     RuntimeHistoryPolicyConfig,
 )
 from src.agent.config.policy_config import RetrievalPolicyConfig
@@ -34,6 +39,19 @@ class PolicyConfigTestCase(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_event_schedule_and_rule_data_are_centralized_in_config(self) -> None:
+        routing = EventRoutingPolicyConfig()
+        schedule = AutonomousScheduleConfig()
+        autonomous = AutonomousCheckPolicyConfig()
+        rules = RuleIntentPolicyConfig()
+        memory_gate = MemoryGatePolicyConfig()
+
+        self.assertIn("timer_finished", routing.structured_decision_events)
+        self.assertEqual(rules.intent_by_event["timer_finished"], "complete_focus")
+        self.assertIn("focus_health_check", schedule.intervals_sec)
+        self.assertEqual(autonomous.focus_min_elapsed_sec, 600)
+        self.assertIn("break_suggestion_rejected", memory_gate.feedback_event_types)
 
     def test_default_policy_config_keeps_existing_action_defaults(self) -> None:
         context = AgentContextBuilder().build(
@@ -327,6 +345,8 @@ class PolicyConfigTestCase(unittest.TestCase):
                 "user_attention_updated",
                 "user_emotion_updated",
                 "user_fatigue_updated",
+                "user_posture_updated",
+                "user_activity_updated",
                 "light_level_updated",
                 "temperature_humidity_updated",
                 "noise_level_updated",

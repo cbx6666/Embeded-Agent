@@ -44,6 +44,7 @@ class RuntimeHistory:
     state_change_counts: dict[str, int] = field(default_factory=dict)
     emotion_samples: list[dict[str, Any]] = field(default_factory=list)
     emotion_summaries: list[dict[str, Any]] = field(default_factory=list)
+    signal_trends: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def to_decision_dict(self) -> dict[str, Any]:
         """生成 PersonalContext 可读取的只读短期历史摘要。"""
@@ -62,4 +63,55 @@ class RuntimeHistory:
             "state_change_counts": dict(self.state_change_counts),
             "emotion_samples": list(self.emotion_samples),
             "emotion_summaries": list(self.emotion_summaries),
+            "signal_trends": {
+                name: dict(summary)
+                for name, summary in self.signal_trends.items()
+            },
         }
+
+
+def compact_signal_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    """Build the bounded aggregate exposed to decision context."""
+
+    recent_values = [
+        item
+        for item in summary.get("recent_values", [])
+        if isinstance(item, dict)
+    ]
+    counts = {
+        str(value): int(count)
+        for value, count in dict(summary.get("value_counts", {})).items()
+    }
+    sample_count = sum(counts.values())
+    timestamps = [
+        int(item["timestamp"])
+        for item in recent_values
+        if item.get("timestamp") is not None
+    ]
+    return {
+        "current": summary.get("current"),
+        "previous": summary.get("previous"),
+        "updated_at": summary.get("updated_at"),
+        "last_changed_at": summary.get("last_changed_at"),
+        "consecutive_same_count": int(summary.get("consecutive_same_count", 0)),
+        "sample_count": sample_count,
+        "value_counts": counts,
+        "value_ratios": {
+            value: round(count / sample_count, 4)
+            for value, count in counts.items()
+        } if sample_count else {},
+        "confidence_summary": dict(summary.get("confidence_summary", {})),
+        "window_start_ts": min(timestamps) if timestamps else None,
+        "window_end_ts": max(timestamps) if timestamps else None,
+        "window_duration_sec": max(timestamps) - min(timestamps) if timestamps else 0,
+    }
+
+
+def compact_signal_trends(
+    signal_trends: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    return {
+        name: compact_signal_summary(summary)
+        for name, summary in signal_trends.items()
+        if isinstance(summary, dict)
+    }

@@ -14,7 +14,7 @@ from tests.fakes.fake_llm_service import FakeLLMService
 
 
 class LlmFastModeTestCase(unittest.TestCase):
-    def test_fast_mode_uses_single_fast_dialogue_call(self) -> None:
+    def test_fast_mode_uses_single_unified_planner_call(self) -> None:
         llm = FakeLLMService()
         pipeline = DecisionPipeline(decision_policy=DecisionPolicyConfig(llm_mode="fast"))
 
@@ -25,10 +25,12 @@ class LlmFastModeTestCase(unittest.TestCase):
             llm_service=llm,
         )
 
-        self.assertEqual(llm.calls, ["fast_dialogue"])
+        self.assertEqual(llm.calls, ["unified_planner"])
         self.assertEqual(llm.reply_calls, 0)
         self.assertEqual(result.intents[0].type, "answer_user")
         self.assertIn("speak", {action.type for action in result.actions})
+        self.assertEqual(result.stage_metadata["llm_call_count"], 1)
+        self.assertEqual(result.stage_metadata["llm_roles_called"], ["unified_planner"])
 
     def test_fast_prompt_includes_focus_state(self) -> None:
         state = AgentState(
@@ -79,6 +81,69 @@ class LlmFastModeTestCase(unittest.TestCase):
             llm.calls[:4],
             ["situation_analyst", "intent_planner", "safety_critic", "response_writer"],
         )
+
+    def test_fast_mode_complex_plan_adds_only_safety_critic(self) -> None:
+        llm = FakeLLMService(
+            {
+                "unified_planner": json.dumps(
+                    {
+                        "situation": {
+                            "summary": "complex request",
+                            "user_intent": "continue and reduce reminders",
+                            "current_state": "available",
+                            "risks": [],
+                            "uncertainties": [],
+                            "should_respond": True,
+                            "risk_level": "low",
+                        },
+                        "plan": {
+                            "intents": [
+                                {
+                                    "type": "continue_focus",
+                                    "priority": 80,
+                                    "reason": "continue",
+                                    "payload": {"duration_minutes": 20},
+                                },
+                                {
+                                    "type": "answer_user",
+                                    "priority": 60,
+                                    "reason": "ack",
+                                    "payload": {},
+                                    "requires_llm": True,
+                                },
+                            ],
+                            "reasoning": "two intents",
+                            "risk_level": "low",
+                            "interrupt_user": False,
+                        },
+                        "response": {
+                            "speak_text": "好的，继续二十分钟。",
+                            "display_text": "好的，继续二十分钟。",
+                            "tone": "calm",
+                        },
+                    }
+                ),
+                "safety_critic": json.dumps(
+                    {"decision": "approve", "reason": "ok", "revised_plan": None}
+                ),
+            }
+        )
+        pipeline = DecisionPipeline(decision_policy=DecisionPolicyConfig(llm_mode="fast"))
+
+        result = pipeline.decide(
+            previous_state=AgentState(),
+            current_state=AgentState(),
+            event=Event(
+                type="user_text_input",
+                timestamp=5,
+                payload={"text": "继续二十分钟并少提醒我"},
+            ),
+            llm_service=llm,
+        )
+
+        self.assertEqual(llm.calls, ["unified_planner", "safety_critic"])
+        self.assertEqual(result.stage_metadata["llm_call_count"], 2)
+        self.assertNotIn("response_writer", result.stage_metadata["llm_roles_called"])
 
 
 if __name__ == "__main__":

@@ -61,6 +61,18 @@ class MemoryGateTestCase(unittest.TestCase):
         self.assertFalse(action_allowed)
         self.assertEqual(action_reason, "skipped_internal_event")
 
+    def test_break_feedback_is_allowed_for_async_memory(self) -> None:
+        allowed, reason = should_process_event_memory(
+            Event(
+                type="break_suggestion_rejected",
+                timestamp=2,
+                payload={"source": "user_feedback"},
+            )
+        )
+
+        self.assertTrue(allowed)
+        self.assertEqual(reason, "allowed_feedback_signal")
+
     def test_empty_and_speak_display_actions_are_skipped(self) -> None:
         source_event = Event(type="user_text_input", timestamp=1, payload={"text": "hello there"})
 

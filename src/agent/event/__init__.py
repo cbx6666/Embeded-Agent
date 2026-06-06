@@ -19,10 +19,13 @@ from src.agent.event.event_builders import (
     user_emotion_updated_standard,
 )
 from src.agent.event.types import EventType
+from src.agent.event.event_priority_router import EventPriorityRouter, EventRoute
 
 __all__ = [
     "Event",
     "EventType",
+    "EventPriorityRouter",
+    "EventRoute",
     "make_behavior_attention_event",
     "make_behavior_presence_event",
     "make_display_sensor_event",

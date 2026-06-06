@@ -27,6 +27,7 @@ from src.agent.config.policy_config import ContextPolicyConfig
 from src.agent.user.personal_context import PersonalContext
 from src.agent.event import Event
 from src.agent.state import AgentState
+from src.agent.state.runtime_history import compact_signal_trends
 
 
 @dataclass
@@ -152,6 +153,24 @@ def _summarize_state(state: AgentState | None) -> dict[str, Any]:
             "humidity_level": state.environment.humidity_level,
         },
         "cooldowns": dict(state.cooldown.reminder_last_ts),
+        "autonomous_check_cooldowns": dict(state.cooldown.autonomous_check_last_ts),
+        "trends": _trend_context(state),
+    }
+
+
+def _trend_context(state: AgentState) -> dict[str, Any]:
+    """只暴露有界统计，不把最多 50 条原始传感器样本塞进 prompt。"""
+
+    trends = compact_signal_trends(state.runtime_history.signal_trends)
+    return {
+        "fatigue": trends.get("fatigue", {}),
+        "attention": trends.get("attention", {}),
+        "posture": trends.get("posture", {}),
+        "activity": trends.get("activity", {}),
+        "environment": {
+            name: trends.get(name, {})
+            for name in ("light", "temperature", "humidity", "noise")
+        },
     }
 
 

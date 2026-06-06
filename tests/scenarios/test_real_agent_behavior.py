@@ -69,16 +69,34 @@ class RealAgentBehaviorScenarioTestCase(unittest.TestCase):
             core.handle_event(Event(type="user_fatigue_updated", timestamp=130, payload={"fatigue_level": "high"}))
             core.handle_event(Event(type="user_presence_updated", timestamp=140, payload={"presence": "away"}))
             blocked_actions, _ = core.handle_event(
-                Event(type="system_triggered", timestamp=150, payload={"trigger": "focus_health_check"})
+                Event(
+                    type="system_triggered",
+                    timestamp=150,
+                    payload={"trigger": "focus_health_check", "source": "agent_autonomy"},
+                )
             )
 
             self.assertFalse(any(action.payload.get("reason") == "rest_reminder" for action in blocked_actions))
             self.assertTrue(core.last_runtime_trace)
             trace = core.last_runtime_trace
-            self.assertTrue(_has_stage_order(trace.stages(), ["event", "reducer", "personal_context", "agent_context", "prompt", "llm_output", "validator", "guard", "action_realizer", "action"]))
-            self.assertIn("温和", trace.to_json())
-            self.assertIn("presence safety blocked", trace.to_json())
-            self.assertIn("prompt", trace.find("prompt", "response_writer")[0].payload)
+            self.assertTrue(
+                _has_stage_order(
+                    trace.stages(),
+                    [
+                        "event",
+                        "reducer",
+                        "event_route",
+                        "autonomous_check_policy",
+                        "personal_context",
+                        "action_result",
+                    ],
+                )
+            )
+            self.assertEqual(
+                trace.find("autonomous_check_policy", "evaluated")[0].payload["reason"],
+                "user_not_present",
+            )
+            self.assertFalse(trace.find("llm_output"))
         finally:
             core.shutdown()
 

@@ -43,7 +43,11 @@ class ActionRealizer:
         response: ResponseDraft,
         context: AgentContext,
     ) -> list[Action]:
-        """按优先级把 intent 转成 Action；不重新解释语义。"""
+        """按优先级把已通过 Validator/Guard 的 intent 转成 Action。
+
+        Rule 和 LLM 在这里没有特权差异；Realizer 只看注册 intent 和配置，不重新
+        解释自然语言，也不允许上游直接夹带设备命令。
+        """
 
         actions: list[Action] = []
         for intent in sorted(plan.intents, key=lambda item: item.priority, reverse=True):
@@ -68,7 +72,7 @@ class ActionRealizer:
         if intent.type == "answer_user":
             text = _response_text(intent, response) or self.copy_policy.fallback_answer_text
             actions: list[Action] = []
-            if not response.already_spoken:
+            if not bool(getattr(response, "already_spoken", False)):
                 actions.append(speak(text, reason=intent.reason))
             actions.append(display(response.display_text or text, reason=intent.reason))
             return actions

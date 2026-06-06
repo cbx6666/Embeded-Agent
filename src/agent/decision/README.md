@@ -2,9 +2,9 @@
 
 ## 职责
 
-`decision/` 是 LLM 输出到设备动作之间的确定性边界。
+`decision/` 是 Rule/LLM 输出到设备动作之间的确定性边界。
 
-`AgentContextBuilder -> LLMAgentOrchestrator -> IntentPlanValidator -> DeterministicGuard -> ActionRealizer -> Action`
+`IntentPlan -> DecisionPostProcessor -> IntentPlanValidator -> DeterministicGuard -> ActionRealizer -> Action`
 
 ## 不负责什么
 
@@ -13,10 +13,13 @@
 ## 核心文件
 
 - `intent_model.py`：注册 intent 类型、AgentIntent 和 IntentPlan。
+- `rule_intent_builder.py`：P0B 结构化事件的 0 LLM 计划构造。
+- `autonomous_check_policy.py`：P1 的状态、趋势、source 和 cooldown 前置门控。
+- `decision_post_processor.py`：Rule/LLM 共用的后处理链。
 - `validator.py`：拒绝未注册 intent、action 字段和 state_patch。
 - `guard.py`：执行 presence safety、cooldown、高风险阻断等硬边界。
 - `action_realizer.py`：把批准的 IntentPlan 转成注册 Action。
-- `decision_pipeline.py`：串联 LLM Agent 与确定性边界。
+- `decision_pipeline.py`：串联 Rule/LLM 计划来源与确定性边界。
 
 ## 上游和下游
 

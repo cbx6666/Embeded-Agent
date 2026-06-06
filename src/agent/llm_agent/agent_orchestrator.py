@@ -1,10 +1,9 @@
 """
 LLM Agent 编排模块。
 
-本模块负责串联 SituationAnalyst、IntentPlanner、SafetyCritic 和
-ResponseWriter，完成一轮高层认知决策。上游输入是 `AgentContextBuilder`
-生成的紧凑 AgentContext，下游输出是包含 SituationFrame、IntentPlan、安全审查
-和表达草稿的 AgentRun。
+本模块提供两种认知编排：fast 模式用 UnifiedPlanner 单次生成 Situation、IntentPlan
+和 Response，仅在复杂/高风险时追加 SafetyCritic；full 模式保留
+SituationAnalyst、IntentPlanner、SafetyCritic、ResponseWriter 四角色链。
 
 本模块不直接生成 Action，不修改 AgentState，也不直接写入 LongTermMemoryStore。底层
 动作落地由 `decision/action_realizer.py` 负责，安全边界由 validator 和 guard
@@ -13,12 +12,14 @@ ResponseWriter，完成一轮高层认知决策。上游输入是 `AgentContextB
 
 from __future__ import annotations
 
+from src.agent.config.policy_config import LLMRolePolicyConfig
 from src.agent.decision.agent_context_builder import AgentContext
 from src.agent.llm_agent.roles.intent_planner import IntentPlanner
 from src.agent.llm_agent.roles.response_writer import ResponseWriter
 from src.agent.llm_agent.roles.safety_critic import SafetyCritic
 from src.agent.llm_agent.roles.situation_analyst import SituationAnalyst
 from src.agent.llm_agent.fast_dialogue import build_fast_dialogue_prompt, fast_dialogue_role_name
+from src.agent.llm_agent.unified_planner import UnifiedPlanner
 from src.adapters.voice.voice_streaming import SentenceChunker
 from src.agent.llm_agent.schemas import (
     AgentRun,
@@ -30,16 +31,8 @@ from src.agent.llm_agent.schemas import (
 )
 from src.services.llm_service import LLMService
 
-_FAST_DIALOGUE_EVENT_TYPES = frozenset({"speech_recognized", "user_text_input"})
-
-
 class LLMAgentOrchestrator:
-    """四角色 LLM 认知编排器。
-
-    职责是让多个 LLM 角色按固定顺序协作：先理解场景，再规划 Intent，再做
-    安全审查，最后生成表达文本。它输入 AgentContext 和 LLMService，输出
-    AgentRun。它不负责执行动作、不负责持久化、不负责硬件控制。
-    """
+    """在单调用 fast path 与完整四角色链之间选择。"""
 
     def __init__(
         self,
@@ -48,11 +41,17 @@ class LLMAgentOrchestrator:
         intent_planner: IntentPlanner | None = None,
         safety_critic: SafetyCritic | None = None,
         response_writer: ResponseWriter | None = None,
+        unified_planner: UnifiedPlanner | None = None,
+        role_policy: LLMRolePolicyConfig | None = None,
     ) -> None:
         self.situation_analyst = situation_analyst or SituationAnalyst()
         self.intent_planner = intent_planner or IntentPlanner()
         self.safety_critic = safety_critic or SafetyCritic()
         self.response_writer = response_writer or ResponseWriter()
+        self.role_policy = role_policy or LLMRolePolicyConfig()
+        self.unified_planner = unified_planner or UnifiedPlanner(
+            policy_config=self.role_policy
+        )
 
     def decide(
         self,
@@ -67,8 +66,12 @@ class LLMAgentOrchestrator:
         metadata，让 trace 能说明模型在哪一层降级。
         """
 
-        if llm_mode == "fast" and _should_use_fast_dialogue(context):
-            return self._decide_fast_dialogue(context, llm_service)
+        if llm_mode == "fast":
+            # 语音流式回复仍走纯文本快路径；其他请求用一次 UnifiedPlanner 同时
+            # 产出 Situation、IntentPlan 和 Response。
+            if _should_stream_fast_dialogue(context, llm_service):
+                return self._decide_fast_dialogue(context, llm_service)
+            return self._decide_adaptive(context, llm_service)
 
         stage_metadata: dict[str, object] = {}
 
@@ -105,6 +108,66 @@ class LLMAgentOrchestrator:
             stage_metadata=stage_metadata,
         )
 
+    def _decide_adaptive(
+        self,
+        context: AgentContext,
+        llm_service: LLMService,
+    ) -> AgentRun:
+        """单次统一规划；只有复杂或高风险计划再追加 SafetyCritic。"""
+
+        situation, plan, response, planner_meta = self.unified_planner.decide(
+            context,
+            llm_service,
+        )
+        stage_metadata: dict[str, object] = {
+            "unified_planner": planner_meta,
+            "situation_analyst": {"skipped": True, "reason": "merged_into_unified_planner"},
+            "intent_planner": {"skipped": True, "reason": "merged_into_unified_planner"},
+            "response_writer": {"skipped": True, "reason": "response_provided_by_unified_planner"},
+        }
+        safety_review = SafetyReview(
+            decision="approve",
+            reason="conditional safety review not required",
+        )
+        reviewed_plan = plan
+        if self._needs_safety_review(plan):
+            safety_review, reviewed_plan, safety_meta = self.safety_critic.review(
+                context,
+                situation,
+                plan,
+                llm_service,
+            )
+            stage_metadata["safety_critic"] = safety_meta
+        else:
+            stage_metadata["safety_critic"] = {
+                "skipped": True,
+                "reason": "low_risk_single_intent",
+            }
+
+        return AgentRun(
+            situation=situation,
+            plan=reviewed_plan,
+            safety_review=safety_review,
+            response=response,
+            used_llm=True,
+            fallback_reason=_fallback_reason(stage_metadata),
+            stage_metadata=stage_metadata,
+        )
+
+    def _needs_safety_review(self, plan: object) -> bool:
+        """根据结构化计划决定是否值得追加第二次 LLM 审查。"""
+
+        intents = list(getattr(plan, "intents", []) or [])
+        risk_level = str(getattr(plan, "risk_level", "low"))
+        if risk_level in self.role_policy.safety_review_risk_levels:
+            return True
+        if len(intents) >= self.role_policy.safety_review_min_intents:
+            return True
+        return any(
+            str(getattr(intent, "type", "")) in self.role_policy.safety_review_intent_types
+            for intent in intents
+        )
+
     def _decide_fast_dialogue(self, context: AgentContext, llm_service: LLMService) -> AgentRun:
         """语音/文本对话快路径：单次 LLM，携带状态/偏好/对话等关键上下文。"""
 
@@ -119,6 +182,7 @@ class LLMAgentOrchestrator:
         stage_metadata: dict[str, object] = {
             role_name: {"prompt": prompt, "skipped_roles": list(_FOUR_ROLE_NAMES)},
         }
+        model_name = str(getattr(llm_service, "model", "unknown"))
         sink = getattr(llm_service, "voice_stream_sink", None)
         try:
             if sink is not None and context.event_type == "speech_recognized":
@@ -128,7 +192,7 @@ class LLMAgentOrchestrator:
                     **stream_meta,
                     "streaming": True,
                     "fallback": False,
-                    "model": llm_service.model,
+                    "model": model_name,
                 }
             else:
                 raw = llm_service.complete_json(role_name, prompt)
@@ -144,7 +208,7 @@ class LLMAgentOrchestrator:
                     "raw": raw,
                     "streaming": False,
                     "fallback": False,
-                    "model": llm_service.model,
+                    "model": model_name,
                 }
         except Exception as exc:
             draft = ResponseDraft(
@@ -155,7 +219,7 @@ class LLMAgentOrchestrator:
                 **stage_metadata[role_name],
                 "fallback": True,
                 "error": str(exc),
-                "model": llm_service.model,
+                "model": model_name,
             }
             return AgentRun(
                 situation=situation,
@@ -236,8 +300,15 @@ _FOUR_ROLE_NAMES = (
 )
 
 
-def _should_use_fast_dialogue(context: AgentContext) -> bool:
-    return context.event_type in _FAST_DIALOGUE_EVENT_TYPES and bool(context.user_text.strip())
+def _should_stream_fast_dialogue(
+    context: AgentContext,
+    llm_service: LLMService,
+) -> bool:
+    return bool(
+        context.event_type == "speech_recognized"
+        and context.user_text.strip()
+        and getattr(llm_service, "voice_stream_sink", None) is not None
+    )
 
 
 def _fallback_reason(stage_metadata: dict[str, object]) -> str | None:

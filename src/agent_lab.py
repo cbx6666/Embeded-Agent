@@ -27,7 +27,7 @@ from src.adapters.mock_input import parse_mock_command
 from src.adapters.profile_cli import handle_profile_command
 from src.agent.core import AgentCore, build_default_core
 from src.agent.event import Event
-from src.agent.execution.autonomous_tick import build_autonomous_check_event
+from src.agent.scheduling import build_autonomous_check_event
 from src.agent.execution.loop import AgentLoop
 
 LAB_HELP_TEXT = """可用命令：

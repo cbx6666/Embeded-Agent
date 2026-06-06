@@ -306,13 +306,28 @@ class AgentCoreTestCase(unittest.TestCase):
         self.core.state.focus.elapsed_sec = 600
         self.core.state.focus.remaining_sec = 900
         self.core.state.user.presence = "present"
-        self.core.state.user.fatigue_level = "high"
+        for timestamp in (2900, 2901, 2902):
+            self.core.handle_event(
+                Event(
+                    type="user_fatigue_updated",
+                    timestamp=timestamp,
+                    payload={"fatigue_level": "high", "confidence": 0.9},
+                )
+            )
 
         first_actions, _ = self.core.handle_event(
-            Event(type="system_triggered", timestamp=3000, payload={"trigger": "focus_health_check"})
+            Event(
+                type="system_triggered",
+                timestamp=3000,
+                payload={"trigger": "focus_health_check", "source": "agent_autonomy"},
+            )
         )
         second_actions, _ = self.core.handle_event(
-            Event(type="system_triggered", timestamp=3020, payload={"trigger": "focus_health_check"})
+            Event(
+                type="system_triggered",
+                timestamp=3020,
+                payload={"trigger": "focus_health_check", "source": "agent_autonomy"},
+            )
         )
 
         self.assertTrue(any(action.payload.get("reason") == "rest_reminder" for action in first_actions))

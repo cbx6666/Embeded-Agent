@@ -6,20 +6,36 @@
 
 from src.agent.config.policy_config import (
     ActionPolicyConfig,
+    AutonomousCheckPolicyConfig,
+    AutonomousScheduleConfig,
     ContextPolicyConfig,
     CopyPolicyConfig,
+    DedicatedEventPolicyConfig,
     DecisionPolicyConfig,
+    EventRoutingPolicyConfig,
     GuardPolicyConfig,
+    LLMRolePolicyConfig,
+    MemoryGatePolicyConfig,
     RuntimeHistoryPolicyConfig,
+    RuleIntentPolicyConfig,
+    SignalAggregationPolicyConfig,
 )
 from src.agent.config.policy_config import RetrievalPolicyConfig
 
 __all__ = [
     "ActionPolicyConfig",
+    "AutonomousCheckPolicyConfig",
+    "AutonomousScheduleConfig",
     "ContextPolicyConfig",
     "CopyPolicyConfig",
+    "DedicatedEventPolicyConfig",
     "DecisionPolicyConfig",
+    "EventRoutingPolicyConfig",
     "GuardPolicyConfig",
+    "LLMRolePolicyConfig",
+    "MemoryGatePolicyConfig",
     "RetrievalPolicyConfig",
     "RuntimeHistoryPolicyConfig",
+    "RuleIntentPolicyConfig",
+    "SignalAggregationPolicyConfig",
 ]

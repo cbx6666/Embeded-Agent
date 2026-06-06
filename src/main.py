@@ -331,7 +331,7 @@ def main() -> None:
         type=str,
         default="fast",
         choices=("fast", "full"),
-        help="LLM 决策：fast=语音/文本对话单次调用（默认，更快）| full=四角色串行（更慢更完整）",
+        help="LLM 决策：fast=统一规划 1 次、必要时追加安全审查（默认）| full=四角色串行",
     )
     parser.add_argument(
         "--sherpa-tts-dir",
@@ -679,6 +679,8 @@ def main() -> None:
         output=output,
         decision_policy=DecisionPolicyConfig(llm_mode=args.llm_mode),
     )
+    # Scheduler 只产生低频 system_triggered 检查；是否进入 Rule/LLM 由 P1 policy 决定。
+    core.start_autonomous_scheduler()
 
     if voice_adapter is not None:
         voice_adapter._sink = core

@@ -13,12 +13,14 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Literal
 
 from src.agent.action import Action
+from src.agent.config.policy_config import MemoryGatePolicyConfig
 from src.agent.event import Event
 from src.agent.execution.action_result import ActionResult
 from src.agent.state import AgentState
 
 
 MemoryTaskType = Literal["event", "action"]
+_MEMORY_GATE_POLICY = MemoryGatePolicyConfig()
 
 
 @dataclass(frozen=True)
@@ -214,26 +216,7 @@ def _event_priority(event: Event) -> int:
     if event.type in {"break_suggestion_accepted", "break_suggestion_rejected"}:
         return 80
     text = str(event.payload.get("text", "")).strip().lower()
-    durable_markers = (
-        "以后",
-        "记住",
-        "我喜欢",
-        "我不喜欢",
-        "我更喜欢",
-        "我讨厌",
-        "我习惯",
-        "从现在开始",
-        "默认",
-        "不要再",
-        "每次",
-        "remember",
-        "from now on",
-        "i prefer",
-        "i like",
-        "i dislike",
-        "by default",
-    )
-    return 100 if any(marker in text for marker in durable_markers) else 50
+    return 100 if any(marker in text for marker in _MEMORY_GATE_POLICY.long_term_markers) else 50
 
 
 def _event_to_dict(event: Event) -> dict[str, Any]:

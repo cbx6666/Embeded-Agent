@@ -95,11 +95,17 @@ class ReducerTestCase(unittest.TestCase):
         self.assertFalse(state.focus.active)
         self.assertEqual(state.runtime_history.focus_sessions[-1]["reason"], "timer_stopped")
 
-    def test_timer_tick_past_target_completes_focus(self) -> None:
+    def test_timer_tick_at_zero_waits_for_timer_finished_event(self) -> None:
         state = AgentState()
         reduce_state(state, Event(type="focus_start_requested", timestamp=10, payload={"duration_sec": 60}))
 
         reduce_state(state, Event(type="timer_ticked", timestamp=75, payload={"remaining_sec": 0}))
+
+        self.assertTrue(state.focus.active)
+        self.assertEqual(state.focus.remaining_sec, 0)
+        self.assertEqual(state.runtime_history.focus_sessions, [])
+
+        reduce_state(state, Event(type="timer_finished", timestamp=75, payload={"remaining_sec": 0}))
 
         self.assertFalse(state.focus.active)
         self.assertEqual(state.focus.last_focus_end_ts, 75)

@@ -32,11 +32,15 @@ def test_decision_package_exports_llm_centered_entrypoints() -> None:
     assert set(decision.__all__) == {
         "ActionRealizer",
         "AgentIntent",
+        "AutonomousCheckDecision",
+        "AutonomousCheckPolicy",
+        "DecisionPostProcessor",
         "DecisionPipeline",
         "DecisionResult",
         "DeterministicGuard",
         "IntentPlan",
         "IntentPlanValidator",
+        "RuleIntentBuilder",
     }
 
 

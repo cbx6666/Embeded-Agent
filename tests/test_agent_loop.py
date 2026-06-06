@@ -10,9 +10,9 @@ from src.agent.action import Action
 from src.agent.core import AgentCore
 from src.agent.event import Event
 from src.agent.execution.action_result import ActionResult
-from src.agent.execution.autonomous_tick import build_autonomous_check_event
 from src.agent.execution.internal_events import build_internal_events_from_results
 from src.agent.execution.loop import AgentLoop
+from src.agent.scheduling import build_autonomous_check_event
 from src.services.runtime_history_service import RuntimeHistoryService
 from src.services.timer_service import TimerService
 from src.storage.json_store import JsonStore
@@ -139,11 +139,7 @@ class AgentLoopTestCase(unittest.TestCase):
         self.assertFalse(any(action.type == "speak" for action in actions))
 
     def test_focus_health_check_triggers_rest_reminder_and_cooldown(self) -> None:
-        self.core.state.focus.active = True
-        self.core.state.focus.elapsed_sec = 600
-        self.core.state.focus.remaining_sec = 900
-        self.core.state.user.presence = "present"
-        self.core.state.user.fatigue_level = "high"
+        self._prepare_sustained_focus_fatigue()
 
         first = self.loop.run_once(
             build_autonomous_check_event(self.core.state, now_ts=6000, reason="focus_health_check")
@@ -156,11 +152,7 @@ class AgentLoopTestCase(unittest.TestCase):
         self.assertFalse(any(action.payload.get("reason") == "rest_reminder" for action in second))
 
     def test_allowed_focus_health_check_still_triggers_rest(self) -> None:
-        self.core.state.focus.active = True
-        self.core.state.focus.elapsed_sec = 600
-        self.core.state.focus.remaining_sec = 900
-        self.core.state.user.presence = "present"
-        self.core.state.user.fatigue_level = "high"
+        self._prepare_sustained_focus_fatigue()
 
         actions = self.loop.run_once(
             Event(type="system_triggered", timestamp=6100, payload={"trigger": "focus_health_check", "source": "agent_autonomy"})
@@ -169,6 +161,17 @@ class AgentLoopTestCase(unittest.TestCase):
         self.assertTrue(any(action.payload.get("reason") == "rest_reminder" for action in actions))
 
     def test_allowed_environment_check_still_triggers_environment_feedback(self) -> None:
+        self.core.state.focus.active = True
+        self.core.state.user.presence = "present"
+        for timestamp in (6100, 6101, 6102):
+            self.core.handle_event(
+                Event(
+                    type="noise_level_updated",
+                    timestamp=timestamp,
+                    payload={"level": "high", "noise_db": 80, "confidence": 0.9},
+                )
+            )
+
         actions = self.loop.run_once(
             Event(type="system_triggered", timestamp=6200, payload={"trigger": "environment_check", "source": "agent_autonomy"})
         )
@@ -177,11 +180,7 @@ class AgentLoopTestCase(unittest.TestCase):
         self.assertTrue(any(action.payload.get("reason") == "environment_warning" for action in actions))
 
     def test_last_effective_decision_not_overwritten_by_internal_noop(self) -> None:
-        self.core.state.focus.active = True
-        self.core.state.focus.elapsed_sec = 600
-        self.core.state.focus.remaining_sec = 900
-        self.core.state.user.presence = "present"
-        self.core.state.user.fatigue_level = "high"
+        self._prepare_sustained_focus_fatigue()
 
         self.loop.run_once(
             Event(type="system_triggered", timestamp=6300, payload={"trigger": "focus_health_check", "source": "agent_autonomy"})
@@ -190,6 +189,20 @@ class AgentLoopTestCase(unittest.TestCase):
         self.assertIsNotNone(self.core.last_effective_decision_result)
         self.assertIn("suggest_rest", {intent.type for intent in self.core.last_effective_decision_result.intents})  # type: ignore[union-attr]
         self.assertEqual([intent.type for intent in self.core.last_decision_result.intents], ["no_op"])  # type: ignore[union-attr]
+
+    def _prepare_sustained_focus_fatigue(self) -> None:
+        self.core.state.focus.active = True
+        self.core.state.focus.elapsed_sec = 600
+        self.core.state.focus.remaining_sec = 900
+        self.core.state.user.presence = "present"
+        for timestamp in (5900, 5901, 5902):
+            self.core.handle_event(
+                Event(
+                    type="user_fatigue_updated",
+                    timestamp=timestamp,
+                    payload={"fatigue_level": "high", "confidence": 0.9},
+                )
+            )
 
     def test_max_steps_prevents_infinite_internal_loop(self) -> None:
         loop = AgentLoop(self.core, max_steps=2)

@@ -10,10 +10,13 @@ class DeterministicReplayTestCase(unittest.TestCase):
     def test_same_event_log_replays_same_actions_and_trace(self) -> None:
         events = (
             Event(type="user_text_input", timestamp=100, payload={"text": "Please remind me less and keep it gentle."}),
-            Event(type="focus_start_requested", timestamp=120, payload={"duration_sec": 600, "source": "user"}),
-            Event(type="user_fatigue_updated", timestamp=200, payload={"fatigue_level": "high"}),
-            Event(type="system_triggered", timestamp=220, payload={"trigger": "focus_health_check"}),
-            Event(type="system_triggered", timestamp=240, payload={"trigger": "focus_health_check"}),
+            Event(type="focus_start_requested", timestamp=120, payload={"duration_sec": 1200, "source": "user"}),
+            Event(type="timer_ticked", timestamp=720, payload={"remaining_sec": 600}),
+            Event(type="user_fatigue_updated", timestamp=721, payload={"fatigue_level": "high", "confidence": 0.9}),
+            Event(type="user_fatigue_updated", timestamp=722, payload={"fatigue_level": "high", "confidence": 0.9}),
+            Event(type="user_fatigue_updated", timestamp=723, payload={"fatigue_level": "high", "confidence": 0.9}),
+            Event(type="system_triggered", timestamp=730, payload={"trigger": "focus_health_check", "source": "agent_autonomy"}),
+            Event(type="system_triggered", timestamp=740, payload={"trigger": "focus_health_check", "source": "agent_autonomy"}),
         )
 
         first = replay_event_log(events)
@@ -21,7 +24,7 @@ class DeterministicReplayTestCase(unittest.TestCase):
 
         self.assertEqual(first.actions_by_event, second.actions_by_event)
         self.assertEqual(first.trace_json_by_event, second.trace_json_by_event)
-        self.assertTrue(any("cooldown active" in trace for trace in first.trace_json_by_event))
+        self.assertTrue(any("cooldown" in trace for trace in first.trace_json_by_event))
 
     def test_replay_changes_when_input_changes(self) -> None:
         baseline = replay_event_log(

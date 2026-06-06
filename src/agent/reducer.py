@@ -200,7 +200,11 @@ def _handle_tts_finished(state: AgentState, event: Event) -> None:
 
 
 def _handle_timer_ticked(state: AgentState, event: Event) -> None:
-    """根据 timer tick 更新专注剩余时间和已用时长。"""
+    """根据 timer tick 更新专注进度，但不结束会话。
+
+    `timer_ticked` 是高频 P3 telemetry；完成跃迁必须由一次性的
+    `timer_finished` 表达，否则 P3 跳过 DecisionPipeline 后用户不会收到完成反馈。
+    """
     if not state.focus.active or state.focus.start_ts is None:
         return
 
@@ -209,8 +213,6 @@ def _handle_timer_ticked(state: AgentState, event: Event) -> None:
     target_sec = state.focus.target_duration_sec or 0
     state.focus.remaining_sec = remaining_sec
     state.focus.elapsed_sec = min(elapsed_sec, target_sec) if target_sec > 0 else elapsed_sec
-    if remaining_sec <= 0 or (target_sec > 0 and elapsed_sec >= target_sec):
-        _complete_focus_session(state, event.timestamp, reason="timer_complete")
 
 
 def _handle_timer_finished(state: AgentState, event: Event) -> None:

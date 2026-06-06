@@ -38,6 +38,14 @@ class RuntimeStabilityScenarioTestCase(unittest.TestCase):
             core.state.focus.remaining_sec = 3600
             core.state.user.presence = "present"
             core.state.user.fatigue_level = "high"
+            for timestamp in (990, 991, 992):
+                core.handle_event(
+                    Event(
+                        type="user_fatigue_updated",
+                        timestamp=timestamp,
+                        payload={"fatigue_level": "high", "confidence": 0.9},
+                    )
+                )
 
             rest_reminders = 0
             for index in range(105):
@@ -45,7 +53,11 @@ class RuntimeStabilityScenarioTestCase(unittest.TestCase):
                 if index % 5 == 0:
                     event = Event(type="timer_ticked", timestamp=timestamp, payload={"remaining_sec": 3600 - index * 10})
                 else:
-                    event = Event(type="system_triggered", timestamp=timestamp, payload={"trigger": "focus_health_check"})
+                    event = Event(
+                        type="system_triggered",
+                        timestamp=timestamp,
+                        payload={"trigger": "focus_health_check", "source": "agent_autonomy"},
+                    )
                 actions, _ = core.handle_event(event)
                 rest_reminders += int(any(action.payload.get("reason") == "rest_reminder" for action in actions))
 
@@ -53,7 +65,7 @@ class RuntimeStabilityScenarioTestCase(unittest.TestCase):
             self.assertLessEqual(len(core.state.runtime_history.recent_events), 20)
             self.assertLessEqual(len(core.state.runtime_history.recent_actions), 20)
             self.assertTrue(core.last_runtime_trace)
-            self.assertIn("cooldown active", core.last_runtime_trace.to_json())
+            self.assertIn("cooldown", core.last_runtime_trace.to_json())
 
             personal_context = core.personal_context_builder.build(
                 user_id=core.state.current_user_id,

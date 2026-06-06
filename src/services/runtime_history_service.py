@@ -19,9 +19,13 @@ PersonalContextBuilder。它不读取 LongTermMemory，也不依赖 UserProfile�
 """
 
 from collections import Counter
+from typing import Any
 
 from src.agent.action import Action
-from src.agent.config.policy_config import RuntimeHistoryPolicyConfig
+from src.agent.config.policy_config import (
+    RuntimeHistoryPolicyConfig,
+    SignalAggregationPolicyConfig,
+)
 from src.agent.event import Event
 from src.agent.state import AgentState
 
@@ -33,8 +37,10 @@ class RuntimeHistoryService:
         self,
         *,
         policy_config: RuntimeHistoryPolicyConfig | None = None,
+        signal_policy_config: SignalAggregationPolicyConfig | None = None,
     ) -> None:
         self.policy_config = policy_config or RuntimeHistoryPolicyConfig()
+        self.signal_policy_config = signal_policy_config or SignalAggregationPolicyConfig()
 
     def record_event(self, state: AgentState, event: Event) -> None:
         """记录一条标准事件，并维护与运行期相关的滚动统计。"""
@@ -47,10 +53,18 @@ class RuntimeHistoryService:
                 "payload": event.payload,
             }
         )
+        self._record_signal_trends(state, event)
         if event.type == "user_emotion_updated":
             self._record_emotion_sample(state, event)
             self._maybe_rollup_emotion_summary(state, event.timestamp)
-        if event.type in {"user_presence_updated", "user_attention_updated", "user_emotion_updated", "user_fatigue_updated"}:
+        if event.type in {
+            "user_presence_updated",
+            "user_attention_updated",
+            "user_emotion_updated",
+            "user_fatigue_updated",
+            "user_posture_updated",
+            "user_activity_updated",
+        }:
             self._record_state_change(state, event)
         if event.type == "user_attention_updated":
             self._record_attention_event(state, event)
@@ -106,6 +120,76 @@ class RuntimeHistoryService:
         history.focus_sessions = history.focus_sessions[-self.policy_config.max_focus_sessions :]
         history.emotion_samples = history.emotion_samples[-self.policy_config.max_emotion_samples :]
         history.emotion_summaries = history.emotion_summaries[-self.policy_config.max_emotion_summaries :]
+        for trend in history.signal_trends.values():
+            recent_values = list(trend.get("recent_values", []))
+            trend["recent_values"] = recent_values[-self.policy_config.max_signal_recent_values :]
+            self._rebuild_window_summaries(trend)
+
+    def _record_signal_trends(self, state: AgentState, event: Event) -> None:
+        signal_fields = self.signal_policy_config.fields_by_event.get(str(event.type), ())
+        confidence = _optional_float(event.payload.get("confidence"))
+        for signal_name, payload_keys in signal_fields:
+            value = _first_payload_value(event.payload, payload_keys)
+            if value is None:
+                continue
+            trend = state.runtime_history.signal_trends.setdefault(
+                signal_name,
+                {
+                    "current": None,
+                    "previous": None,
+                    "updated_at": None,
+                    "last_changed_at": None,
+                    "consecutive_same_count": 0,
+                    "value_counts": {},
+                    "confidence_summary": {
+                        "count": 0,
+                        "average": None,
+                        "minimum": None,
+                        "maximum": None,
+                    },
+                    "recent_values": [],
+                },
+            )
+            previous = trend.get("current")
+            changed = previous != value
+            trend["previous"] = previous
+            trend["current"] = value
+            trend["updated_at"] = event.timestamp
+            if changed:
+                trend["last_changed_at"] = event.timestamp
+                trend["consecutive_same_count"] = 1
+            else:
+                trend["consecutive_same_count"] = int(trend.get("consecutive_same_count", 0)) + 1
+            recent_values = list(trend.get("recent_values", []))
+            recent_values.append(
+                {
+                    "timestamp": event.timestamp,
+                    "value": value,
+                    "confidence": confidence,
+                }
+            )
+            trend["recent_values"] = recent_values[-self.policy_config.max_signal_recent_values :]
+            self._rebuild_window_summaries(trend)
+
+    def _rebuild_window_summaries(self, trend: dict[str, Any]) -> None:
+        recent_values = [
+            item
+            for item in trend.get("recent_values", [])
+            if isinstance(item, dict)
+        ]
+        counts = Counter(str(item.get("value")) for item in recent_values)
+        trend["value_counts"] = dict(counts)
+        confidences = [
+            value
+            for item in recent_values
+            if (value := _optional_float(item.get("confidence"))) is not None
+        ]
+        trend["confidence_summary"] = {
+            "count": len(confidences),
+            "average": round(sum(confidences) / len(confidences), 4) if confidences else None,
+            "minimum": min(confidences) if confidences else None,
+            "maximum": max(confidences) if confidences else None,
+        }
 
     def _record_state_change(self, state: AgentState, event: Event) -> None:
         history = state.runtime_history
@@ -183,3 +267,19 @@ class RuntimeHistoryService:
                 "avg_confidence": round(sum(confidences) / len(confidences), 3) if confidences else None,
             }
         )
+
+
+def _first_payload_value(payload: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if payload.get(key) is not None:
+            return payload[key]
+    return None
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

@@ -15,7 +15,6 @@
 - `action_result.py`：动作执行结果模型。
 - `internal_events.py`：把动作结果转成内部 Event。
 - `trace.py`：调试 trace 数据结构。
-- `autonomous_tick.py`：构造自主检查事件。
 
 ## 上游和下游
 

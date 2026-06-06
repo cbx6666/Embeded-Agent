@@ -93,6 +93,41 @@ def _fake_complete_json(role: str, prompt: str) -> str:
         text = _fast_dialogue_reply_from_prompt(prompt)
         return json.dumps({"speak_text": text, "display_text": text, "tone": "calm"}, ensure_ascii=False)
 
+    if role == "unified_planner":
+        context = _context_from_prompt(prompt)
+        event = context.get("event", {}) if isinstance(context, dict) else {}
+        event_type = str(event.get("type", "")) if isinstance(event, dict) else ""
+        intent = _intent_from_prompt(prompt)
+        response_text = ""
+        if intent["type"] == "answer_user":
+            response_text = _fast_dialogue_reply_from_prompt(prompt)
+        return json.dumps(
+            {
+                "situation": {
+                    "summary": _summary_for_event(event_type),
+                    "user_intent": "interpreted by unified test planner",
+                    "current_state": "compact state was inspected",
+                    "risks": [],
+                    "uncertainties": [],
+                    "should_respond": bool(response_text),
+                    "risk_level": "low",
+                },
+                "plan": {
+                    "intents": [intent],
+                    "reasoning": "Unified test planner selected an intent.",
+                    "risk_level": "low",
+                    "interrupt_user": intent["type"] in {"suggest_rest", "remind_distraction"},
+                    "response_requirements": {},
+                },
+                "response": {
+                    "speak_text": response_text,
+                    "display_text": response_text,
+                    "tone": "calm",
+                },
+            },
+            ensure_ascii=False,
+        )
+
     if role == "memory_observer":
         context = _context_from_prompt(prompt)
         event = context.get("event", {}) if isinstance(context, dict) else {}
