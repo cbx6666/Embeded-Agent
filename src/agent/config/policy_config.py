@@ -382,6 +382,13 @@ class DecisionPolicyConfig:
                 "light_level_updated",
                 "temperature_humidity_updated",
                 "noise_level_updated",
+                # 高频感知 Event 只更新 state，不走四角色 LLM（否则每条约 4 次 API，阻塞视觉/行为线程）
+                "user_fatigue_updated",
+                "user_emotion_updated",
+                "user_presence_updated",
+                "user_attention_updated",
+                "user_posture_updated",
+                "user_activity_updated",
             }
         )
     )

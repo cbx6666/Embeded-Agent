@@ -12,7 +12,7 @@ from src.adapters.behavior.phone_hand_detector import (
     KP_RIGHT_WRIST,
     PhoneBox,
 )
-from src.adapters.vision_common.acl_runtime import AscendOmSession
+from src.adapters.vision_common.acl_runtime import shared_om_session
 from src.adapters.vision_common.preprocess import letterbox_bgr_for_yolo
 from src.adapters.vision_common.yolo_ultralytics_ops import (
     PosePerson,
@@ -51,8 +51,8 @@ class YoloOmPhonePoseRunner:
         self.phone_conf = float(phone_conf)
         self.pose_conf = float(pose_conf)
         self.min_kpt_conf = float(min_kpt_conf)
-        self._detect = AscendOmSession(detect_om or DEFAULT_DETECT_OM, device_id=device_id)
-        self._pose = AscendOmSession(pose_om or DEFAULT_POSE_OM, device_id=device_id)
+        self._detect = shared_om_session(detect_om or DEFAULT_DETECT_OM, device_id=device_id)
+        self._pose = shared_om_session(pose_om or DEFAULT_POSE_OM, device_id=device_id)
 
     def load(self) -> bool:
         return self._detect.load() and self._pose.load()

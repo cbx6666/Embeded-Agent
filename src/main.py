@@ -33,6 +33,72 @@ class MultiOutput:
         self.console.show_text(text)
 
 
+def _preload_npu_perception_models(
+    args: argparse.Namespace,
+    output: ConsoleOutput,
+    *,
+    wujie_om_path: str | Path,
+    wujie_device_id: int,
+    emotion_be: str,
+) -> object | None:
+    """主线程串行加载 NPU OM；须在桌宠、语音、视觉后台线程之前完成。"""
+    behavior_detector = None
+    if args.behavior:
+        from src.adapters.behavior.phone_hand_detector import (
+            PhoneHandProximityDetector,
+            dependencies_met as behavior_dependencies_met,
+        )
+        from src.adapters.behavior.yolo_om_runner import om_models_available
+
+        if not behavior_dependencies_met():
+            output.show_text(
+                "无法启动行为识别：请安装 requirements-behavior.txt（ultralytics、opencv 等）。"
+            )
+        else:
+            behavior_om_device = int(
+                os.environ.get("BEHAVIOR_OM_DEVICE_ID", str(args.behavior_om_device_id))
+            )
+            behavior_backend = args.behavior_backend.strip().lower()
+            if behavior_backend == "auto" and not om_models_available():
+                output.show_text(
+                    "[Warn] 未找到 models/yolo26/*.om，行为识别将回退 PyTorch CPU。"
+                    " 请先 bash scripts/export_yolo26_to_om.sh 或设置 BEHAVIOR_DETECT_OM。"
+                )
+            behavior_detector = PhoneHandProximityDetector(
+                inference_backend=behavior_backend,
+                om_device_id=behavior_om_device,
+                imgsz=320,
+            )
+            try:
+                output.show_text("正在主线程预加载行为 YOLO 模型（避免与语音/视觉 NPU 并发）…")
+                sys.stdout.flush()
+                behavior_detector.load_models()
+                output.show_text(f"行为模型已就绪（后端={behavior_detector.active_backend}）。")
+                sys.stdout.flush()
+            except Exception as exc:
+                behavior_detector = None
+                output.show_text(f"行为模型预加载失败，跳过行为识别：{exc}")
+
+    if (
+        args.vision
+        and emotion_be.lower() in {"wujie-om", "om", "wujie_om"}
+        and wujie_om_path
+        and Path(wujie_om_path).is_file()
+    ):
+        try:
+            from src.adapters.vision_common.acl_runtime import shared_om_session
+
+            output.show_text("正在主线程预加载情绪 WuJie OM…")
+            sys.stdout.flush()
+            if not shared_om_session(wujie_om_path, wujie_device_id).load():
+                output.show_text("[Warn] WuJie OM 预加载失败，情绪事件可能不可用。")
+            sys.stdout.flush()
+        except Exception as exc:
+            output.show_text(f"[Warn] WuJie OM 预加载异常：{exc}")
+
+    return behavior_detector
+
+
 def _apply_run_profile(args: argparse.Namespace) -> None:
     """默认全栈（桌宠+视觉+语音）；--llm 恢复仅 CLI Agent 的原有行为。"""
     if args.llm:
@@ -79,6 +145,21 @@ def _apply_run_profile(args: argparse.Namespace) -> None:
     else:
         args.environment = False
 
+    if getattr(args, "no_perception_debug", False):
+        args.perception_debug = False
+    elif getattr(args, "perception_debug", False):
+        args.perception_debug = True
+    elif not args.llm and (args.vision or args.behavior):
+        args.perception_debug = True
+    else:
+        args.perception_debug = False
+
+    preview_env = os.environ.get("EMBED_SCREEN_PREVIEW", "").strip().lower()
+    if preview_env in {"1", "true", "yes", "on"}:
+        args.screen_preview = True
+    if getattr(args, "screen_preview", False):
+        args.no_screen = True
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -108,6 +189,17 @@ def main() -> None:
         "--no-screen-fullscreen",
         action="store_true",
         help="全栈模式下桌宠窗口化（非全屏）",
+    )
+    parser.add_argument(
+        "--screen-preview",
+        action="store_true",
+        help="桌宠 HTTP 预览（无需 VNC；在 Cursor 端口面板打开 http://127.0.0.1:8765/）",
+    )
+    parser.add_argument(
+        "--screen-preview-port",
+        type=int,
+        default=int(os.environ.get("EMBED_SCREEN_PREVIEW_PORT", "8765")),
+        help="--screen-preview 本地 HTTP 端口（默认 8765）",
     )
     parser.add_argument(
         "--vision",
@@ -423,6 +515,22 @@ def main() -> None:
         help="统一感知 tick（Hz），覆盖视觉采集/行为 OM/情绪帧率；默认 4",
     )
     parser.add_argument(
+        "--perception-debug",
+        action="store_true",
+        help="开启摄像头感知调试日志（行为/情绪/疲劳，写入 data/perception_debug/perception.log）",
+    )
+    parser.add_argument(
+        "--no-perception-debug",
+        action="store_true",
+        help="关闭感知调试日志（全栈默认在启视觉/行为时开启）",
+    )
+    parser.add_argument(
+        "--perception-debug-dir",
+        type=str,
+        default="data/perception_debug",
+        help="感知调试日志目录",
+    )
+    parser.add_argument(
         "--environment",
         action="store_true",
         help="启用 ESP32 USB 环境传感器（温湿度/光照/噪声）",
@@ -472,6 +580,7 @@ def main() -> None:
         os.environ["EMBED_PERCEPTION_HZ"] = str(args.perception_hz)
     args.behavior = False
     args.environment = False
+    args.perception_debug = False
     if args.llm:
         if args.camera is None:
             args.camera = 0
@@ -510,6 +619,22 @@ def main() -> None:
 
     output = ConsoleOutput()
     cli = CLIInputAdapter()
+
+    from src.adapters.perception_debug_log import configure_perception_debug
+
+    configure_perception_debug(
+        enabled=bool(args.perception_debug),
+        log_dir=args.perception_debug_dir,
+        session_note=(
+            f"camera={args.camera} vision={args.vision} behavior={args.behavior} "
+            f"emotion={args.emotion_backend}"
+        ),
+    )
+    if args.perception_debug:
+        output.show_text(
+            f"[感知调试] 行为/情绪/疲劳日志：{args.perception_debug_dir}/perception.log"
+        )
+
     if not args.llm and (args.screen or args.vision or args.voice):
         output.show_text(
             "全栈模式：桌宠"
@@ -530,23 +655,58 @@ def main() -> None:
     detector = None
 
     screen_adapter = None
-    if args.screen:
-        from src.adapters.screen import ScreenDisplayAdapter, create_screen_window
+    pet_preview_server = None
+    if getattr(args, "screen_preview", False):
+        from src.adapters.screen.headless_pet_display import HeadlessPetDisplay
+        from src.adapters.screen.pet_preview_server import PetPreviewServer
+        from src.adapters.screen.screen_adapter import ScreenDisplayAdapter
 
-        screen_window = create_screen_window(
-            fullscreen=args.screen_fullscreen,
-            size_arg=args.screen_size,
-        )
-        screen_window.start()
-        output.show_text(
-            f"桌宠显示已启动：{screen_window.size[0]}x{screen_window.size[1]}"
-            + ("（全屏）" if screen_window.fullscreen else "")
-        )
+        pet_preview_server = PetPreviewServer(port=args.screen_preview_port)
+        pet_preview_server.start()
+        headless = HeadlessPetDisplay(pet_preview_server)
+        headless.start()
         screen_adapter = ScreenDisplayAdapter(
-            hardware=screen_window,
-            console_output=output
+            hardware=headless,
+            console_output=output,
         )
         output = screen_adapter
+        output.show_text(
+            f"桌宠 HTTP 预览：{pet_preview_server.url} "
+            "（Cursor：Ports 面板打开该端口；PNG 同步 data/runtime/pet_preview.png）"
+        )
+    elif args.screen:
+        from src.adapters.screen import ScreenDisplayAdapter, create_screen_window
+
+        try:
+            screen_window = create_screen_window(
+                fullscreen=args.screen_fullscreen,
+                size_arg=args.screen_size,
+            )
+            screen_window.start()
+            output.show_text(
+                f"桌宠显示已启动：{screen_window.size[0]}x{screen_window.size[1]}"
+                + ("（全屏）" if screen_window.fullscreen else "")
+            )
+            screen_adapter = ScreenDisplayAdapter(
+                hardware=screen_window,
+                console_output=output,
+            )
+            output = screen_adapter
+        except Exception as exc:
+            output.show_text(
+                f"[Warn] 桌宠窗口启动失败（{exc}），继续无屏模式。"
+                " VNC 终端请确认 export DISPLAY=:1，或加 --no-screen。"
+            )
+
+    # NPU OM 须在语音 start 之前、且须在 MediaPipe 大量初始化之前完成 load；
+    # 桌宠 pygame 须先于 OM 预加载，否则 SDL 视频子系统 init 会失败。
+    behavior_detector = _preload_npu_perception_models(
+        args,
+        output,
+        wujie_om_path=wujie_om_path,
+        wujie_device_id=wujie_device_id,
+        emotion_be=emotion_be,
+    )
 
     if args.voice:
         from src.adapters.voice import (
@@ -688,21 +848,6 @@ def main() -> None:
             f"[音频] 唤醒监听：{wake_alsa}  |  用户录音：{capture_alsa}  |  "
             f"扬声器：{playback_alsa or 'auto'}"
         )
-        if args.voice_loop:
-            voice_adapter.start_background_loop(interval_sec=args.voice_loop_interval)
-            output.show_text(
-                f"已启动语音后台识别：duration={args.voice_duration}s interval={args.voice_loop_interval}s"
-            )
-        elif detector is not None:
-            voice_adapter.start()
-            output.show_text(
-                f"已启动唤醒词监听（{args.wake_backend}，词：{args.wake_word}）；"
-                f"{'摄像头麦常驻+唤醒即录' if not args.no_persistent_capture else '唤醒即录'}，"
-                f"VAD 说完停（静音 {args.silence_duration}s），"
-                f"本地应答（{args.wake_ack_mode}），识别后再走 LLM。"
-            )
-        else:
-            output.show_text("语音适配器已就绪（静默模式），使用 /voice_once 命令手动触发。")
 
         import platform
         output.show_text(f"[诊断] 操作系统：{platform.system()}，Python 版本：{platform.python_version()}")
@@ -715,16 +860,6 @@ def main() -> None:
             f"[诊断] TTS 配置：{'已配置' if tts_configured else '未配置'}"
             f"（backend={args.tts_backend}）"
         )
-
-        if args.voice_once:
-            output.show_text("立即执行一次语音识别，请在录音窗口内说话。")
-            event = voice_adapter.run_recognize_once()
-            if event is None:
-                output.show_text("[Voice] 未识别到有效文本。")
-            else:
-                core.handle_event_with_results(event)
-                output.show_text(f"[Voice] 已上报事件：{event.payload}")
-    
     # 设置事件处理回调，自动更新屏幕
     if screen_adapter is not None:
         def on_event_handled(state):
@@ -816,66 +951,41 @@ def main() -> None:
                 "无法启动视觉适配器：请安装 opencv-python-headless、mediapipe（见 requirements.txt）。"
             )
 
-    if args.behavior:
+    if args.behavior and behavior_detector is not None:
         from src.adapters.behavior.phone_camera_adapter import PhoneHandCameraAdapter
-        from src.adapters.behavior.phone_hand_detector import (
-            PhoneHandProximityDetector,
-            dependencies_met as behavior_dependencies_met,
-        )
-        from src.adapters.behavior.yolo_om_runner import om_models_available
         from src.adapters.behavior_adapter import BehaviorAdapter
+        from src.adapters.perception_config import behavior_inference_interval_sec, perception_hz
 
-        if not behavior_dependencies_met():
-            output.show_text(
-                "无法启动行为识别：请安装 requirements-behavior.txt（ultralytics、opencv 等）。"
-            )
-        else:
-            from src.adapters.perception_config import behavior_inference_interval_sec, perception_hz
-
-            behavior_om_device = int(
-                os.environ.get("BEHAVIOR_OM_DEVICE_ID", str(args.behavior_om_device_id))
-            )
-            behavior_backend = args.behavior_backend.strip().lower()
-            behavior_interval = (
-                args.behavior_interval
-                if args.behavior_interval is not None
-                else behavior_inference_interval_sec()
-            )
-            if behavior_backend == "auto" and not om_models_available():
-                output.show_text(
-                    "[Warn] 未找到 models/yolo26/*.om，行为识别将回退 PyTorch CPU。"
-                    " 请先 bash scripts/export_yolo26_to_om.sh 或设置 BEHAVIOR_DETECT_OM。"
-                )
-            behavior_detector = PhoneHandProximityDetector(
-                inference_backend=behavior_backend,
-                om_device_id=behavior_om_device,
-                imgsz=320,
-            )
-            behavior_adapter = PhoneHandCameraAdapter(
+        behavior_interval = (
+            args.behavior_interval
+            if args.behavior_interval is not None
+            else behavior_inference_interval_sec()
+        )
+        behavior_adapter = PhoneHandCameraAdapter(
+            core,
+            camera_index=args.camera,
+            detector=behavior_detector,
+            behavior_adapter=BehaviorAdapter(
                 core,
-                camera_index=args.camera,
-                detector=behavior_detector,
-                behavior_adapter=BehaviorAdapter(
-                    core,
-                    debounce_seconds=args.behavior_debounce,
-                ),
-                inference_interval=behavior_interval,
-                source="yolo26_phone_hand_om_v1",
-                frame_bus=shared_frame_bus,
+                debounce_seconds=args.behavior_debounce,
+            ),
+            inference_interval=behavior_interval,
+            source="yolo26_phone_hand_om_v1",
+            frame_bus=shared_frame_bus,
+        )
+        try:
+            behavior_adapter.start_background()
+            backend_label = behavior_detector.active_backend
+            npu_note = "Ascend NPU" if backend_label == "om" else "CPU PyTorch"
+            share_note = "共享视觉摄像头帧" if shared_frame_bus is not None else f"独立摄像头 index={args.camera}"
+            output.show_text(
+                f"已启动行为+姿势（{share_note}；后端={backend_label}/{npu_note}；"
+                f"tick≈{perception_hz():.0f}Hz interval={behavior_interval:.2f}s；"
+                f"pose 来自 yolo26n-pose.om 同帧推断）。"
             )
-            try:
-                behavior_adapter.start_background()
-                backend_label = behavior_detector.active_backend
-                npu_note = "Ascend NPU" if backend_label == "om" else "CPU PyTorch"
-                share_note = "共享视觉摄像头帧" if shared_frame_bus is not None else f"独立摄像头 index={args.camera}"
-                output.show_text(
-                    f"已启动行为+姿势（{share_note}；后端={backend_label}/{npu_note}；"
-                    f"tick≈{perception_hz():.0f}Hz interval={behavior_interval:.2f}s；"
-                    f"pose 来自 yolo26n-pose.om 同帧推断）。"
-                )
-            except Exception as exc:
-                behavior_adapter = None
-                output.show_text(f"行为识别启动失败：{exc}")
+        except Exception as exc:
+            behavior_adapter = None
+            output.show_text(f"行为识别启动失败：{exc}")
 
     environment_adapter = None
     if args.environment:
@@ -914,6 +1024,31 @@ def main() -> None:
             except Exception as exc:
                 environment_adapter = None
                 output.show_text(f"ESP32 环境传感器启动失败：{exc}")
+
+    if voice_adapter is not None:
+        if args.voice_loop:
+            voice_adapter.start_background_loop(interval_sec=args.voice_loop_interval)
+            output.show_text(
+                f"已启动语音后台识别：duration={args.voice_duration}s interval={args.voice_loop_interval}s"
+            )
+        elif detector is not None:
+            voice_adapter.start()
+            output.show_text(
+                f"已启动唤醒词监听（{args.wake_backend}，词：{args.wake_word}）；"
+                f"{'摄像头麦常驻+唤醒即录' if not args.no_persistent_capture else '唤醒即录'}，"
+                f"VAD 说完停（静音 {args.silence_duration}s），"
+                f"本地应答（{args.wake_ack_mode}），识别后再走 LLM。"
+            )
+        else:
+            output.show_text("语音适配器已就绪（静默模式），使用 /voice_once 命令手动触发。")
+        if args.voice_once:
+            output.show_text("立即执行一次语音识别，请在录音窗口内说话。")
+            event = voice_adapter.run_recognize_once()
+            if event is None:
+                output.show_text("[Voice] 未识别到有效文本。")
+            else:
+                core.handle_event_with_results(event)
+                output.show_text(f"[Voice] 已上报事件：{event.payload}")
 
     output.show_text("Agent MVP 已启动，输入 /help 查看可用命令。")
     if voice_adapter is not None:

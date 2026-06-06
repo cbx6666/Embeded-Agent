@@ -232,6 +232,8 @@ class PhoneHandProximityDetector:
     def load_models(self) -> None:
         backend = self._resolve_backend()
         if backend == "om":
+            if self._om_runner is not None and self._om_runner.loaded:
+                return
             from src.adapters.behavior.yolo_om_runner import YoloOmPhonePoseRunner
 
             om_imgsz = self.imgsz if self.imgsz <= 416 else 320

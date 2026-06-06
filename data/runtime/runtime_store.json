@@ -1,13 +1,20 @@
 {
-  "updated_at": 1776865268,
+  "updated_at": 1780734635,
   "state": {
     "user": {
       "presence": "present",
-      "attention": "idle",
+      "attention": "focused",
+      "behavior": "working",
       "emotion": "neutral",
-      "current_activity": "unknown",
-      "emotion_confidence": null,
-      "attention_confidence": null
+      "fatigue_level": "mild",
+      "posture": "leaning",
+      "current_activity": "studying",
+      "presence_confidence": 0.9,
+      "attention_confidence": 0.9,
+      "behavior_confidence": 0.9,
+      "emotion_confidence": 0.9966592788696289,
+      "fatigue_confidence": 0.275,
+      "posture_confidence": 0.85
     },
     "interaction": {
       "mode": "normal",
@@ -26,184 +33,235 @@
       "last_focus_end_ts": 1775635683
     },
     "environment": {
-      "light": null,
-      "noise": null,
-      "temperature": null,
-      "humidity": null
+      "light_lux": 323,
+      "light_level": "bright",
+      "noise_db": 52,
+      "noise_level": "normal",
+      "temperature_c": 24.7,
+      "temperature_level": "normal",
+      "humidity_pct": 44.1,
+      "humidity_level": "normal"
     },
     "cooldown": {
       "reminder_last_ts": {
         "focus_complete": 1775635683
       }
     },
-    "memory": {
+    "runtime_history": {
       "recent_events": [
         {
-          "type": "timer_ticked",
-          "timestamp": 1775632148,
+          "type": "light_level_updated",
+          "timestamp": 1780734631,
           "payload": {
-            "remaining_sec": 58,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632149,
-          "payload": {
-            "remaining_sec": 57,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632150,
-          "payload": {
-            "remaining_sec": 56,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632151,
-          "payload": {
-            "remaining_sec": 55,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632152,
-          "payload": {
-            "remaining_sec": 54,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632153,
-          "payload": {
-            "remaining_sec": 53,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632154,
-          "payload": {
-            "remaining_sec": 52,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632155,
-          "payload": {
-            "remaining_sec": 51,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632156,
-          "payload": {
-            "remaining_sec": 50,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632157,
-          "payload": {
-            "remaining_sec": 49,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632158,
-          "payload": {
-            "remaining_sec": 48,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632159,
-          "payload": {
-            "remaining_sec": 47,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632160,
-          "payload": {
-            "remaining_sec": 46,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632161,
-          "payload": {
-            "remaining_sec": 45,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_ticked",
-          "timestamp": 1775632162,
-          "payload": {
-            "remaining_sec": 44,
-            "timer": "focus"
-          }
-        },
-        {
-          "type": "timer_finished",
-          "timestamp": 1775635683,
-          "payload": {
-            "remaining_sec": 0,
-            "timer": "focus"
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
           }
         },
         {
           "type": "user_posture_updated",
-          "timestamp": 1776865268,
+          "timestamp": 1780734632,
           "payload": {
-            "posture": "slouch",
-            "source": "camera_v1",
-            "confidence": 0.9,
-            "frame_id": 1
+            "posture": "leaning",
+            "source": "yolo26_pose_om_v1",
+            "confidence": 0.85
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734631,
+          "payload": {
+            "noise_db": 54,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "user_fatigue_updated",
+          "timestamp": 1780734631,
+          "payload": {
+            "fatigue_level": "mild",
+            "source": "mediapipe_pipeline",
+            "confidence": 0.26255081300813005,
+            "perclos": 0.05,
+            "yawn_ratio": 0.975,
+            "yawn_in_window": true,
+            "window_sec": 10
+          }
+        },
+        {
+          "type": "user_activity_updated",
+          "timestamp": 1780734632,
+          "payload": {
+            "activity": "studying",
+            "source": "yolo26_pose_om_v1",
+            "confidence": 0.85
+          }
+        },
+        {
+          "type": "user_emotion_updated",
+          "timestamp": 1780734630,
+          "payload": {
+            "emotion": "neutral",
+            "confidence": 0.9987466335296631,
+            "source": "camera",
+            "model": "raf-db",
+            "raf_emotion": "neutral",
+            "raf_label_id": 7
+          }
+        },
+        {
+          "type": "user_emotion_updated",
+          "timestamp": 1780734631,
+          "payload": {
+            "emotion": "neutral",
+            "confidence": 0.9987466335296631,
+            "source": "camera",
+            "model": "raf-db",
+            "raf_emotion": "neutral",
+            "raf_label_id": 7
+          }
+        },
+        {
+          "type": "user_fatigue_updated",
+          "timestamp": 1780734632,
+          "payload": {
+            "fatigue_level": "mild",
+            "source": "mediapipe_pipeline",
+            "confidence": 0.278125,
+            "perclos": 0.05,
+            "yawn_ratio": 0.95,
+            "yawn_in_window": true,
+            "window_sec": 10
+          }
+        },
+        {
+          "type": "user_fatigue_updated",
+          "timestamp": 1780734633,
+          "payload": {
+            "fatigue_level": "mild",
+            "source": "mediapipe_pipeline",
+            "confidence": 0.275,
+            "perclos": 0.05,
+            "yawn_ratio": 0.95,
+            "yawn_in_window": true,
+            "window_sec": 10
+          }
+        },
+        {
+          "type": "user_presence_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "presence": "present",
+            "source": "yolo26_phone_hand_om_v1",
+            "confidence": 0.9
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "user_attention_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "attention": "focused",
+            "behavior": "working",
+            "source": "yolo26_phone_hand_om_v1",
+            "confidence": 0.9
+          }
+        },
+        {
+          "type": "user_emotion_updated",
+          "timestamp": 1780734632,
+          "payload": {
+            "emotion": "neutral",
+            "confidence": 0.9995323419570923,
+            "source": "camera",
+            "model": "raf-db",
+            "raf_emotion": "neutral",
+            "raf_label_id": 7
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "noise_db": 52,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
           }
         },
         {
           "type": "user_posture_updated",
-          "timestamp": 1776865268,
+          "timestamp": 1780734634,
           "payload": {
-            "posture": "upright",
-            "source": "camera_v1",
-            "confidence": 0.95,
-            "frame_id": 3
+            "posture": "leaning",
+            "source": "yolo26_pose_om_v1",
+            "confidence": 0.85
           }
         },
         {
-          "type": "user_posture_updated",
-          "timestamp": 1776865268,
+          "type": "user_emotion_updated",
+          "timestamp": 1780734633,
           "payload": {
-            "posture": "slouch",
-            "source": "camera_v1",
-            "confidence": 0.8,
-            "frame_id": 10
+            "emotion": "neutral",
+            "confidence": 0.9995323419570923,
+            "source": "camera",
+            "model": "raf-db",
+            "raf_emotion": "neutral",
+            "raf_label_id": 7
           }
         },
         {
-          "type": "user_posture_summary",
-          "timestamp": 1776865268,
+          "type": "user_fatigue_updated",
+          "timestamp": 1780734634,
           "payload": {
-            "posture": "slouch",
-            "accumulated_sec": 0.6,
-            "source": "camera_v1",
-            "confidence": 0.8
+            "fatigue_level": "mild",
+            "source": "mediapipe_pipeline",
+            "confidence": 0.275,
+            "window_sec": 10
+          }
+        },
+        {
+          "type": "user_activity_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "activity": "studying",
+            "source": "yolo26_pose_om_v1",
+            "confidence": 0.85
+          }
+        },
+        {
+          "type": "user_emotion_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "emotion": "neutral",
+            "confidence": 0.9966592788696289,
+            "source": "camera",
+            "model": "raf-db",
+            "raf_emotion": "neutral",
+            "raf_label_id": 7
           }
         }
       ],
@@ -254,6 +312,1268 @@
           "timestamp": 1775635683
         }
       ],
+      "recent_actions": [],
+      "reminder_records": [],
+      "attention_records": [
+        {
+          "timestamp": 1780732754,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780732769,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780732980,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780732995,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780733010,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780733028,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734142,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734144,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734147,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734149,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734151,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734153,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734155,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734621,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734623,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734625,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734627,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734629,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734631,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        },
+        {
+          "timestamp": 1780734634,
+          "attention": "focused",
+          "behavior": "working",
+          "confidence": 0.9,
+          "source": "yolo26_phone_hand_om_v1"
+        }
+      ],
+      "environment_records": [
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780732979,
+          "payload": {
+            "temperature_c": 24.8,
+            "humidity_pct": 44.8,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780732979,
+          "payload": {
+            "light_lux": 324,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780732979,
+          "payload": {
+            "noise_db": 55,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780732990,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.5,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780732990,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780732990,
+          "payload": {
+            "noise_db": 37,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780732997,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.5,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780732997,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780732997,
+          "payload": {
+            "noise_db": 47,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733008,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.3,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733008,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733008,
+          "payload": {
+            "noise_db": 36,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733019,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.3,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733019,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733019,
+          "payload": {
+            "noise_db": 38,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733023,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.3,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733023,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733023,
+          "payload": {
+            "noise_db": 35,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733026,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.3,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733026,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733026,
+          "payload": {
+            "noise_db": 61,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733027,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.3,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733027,
+          "payload": {
+            "light_lux": 324,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733027,
+          "payload": {
+            "noise_db": 45,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733040,
+          "payload": {
+            "temperature_c": 24.8,
+            "humidity_pct": 44.4,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733040,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733040,
+          "payload": {
+            "noise_db": 52,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733057,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733057,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733057,
+          "payload": {
+            "noise_db": 41,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733064,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733064,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733064,
+          "payload": {
+            "noise_db": 39,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733072,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733072,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733072,
+          "payload": {
+            "noise_db": 43,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733079,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.5,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733079,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733079,
+          "payload": {
+            "noise_db": 39,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733088,
+          "payload": {
+            "temperature_c": 24.9,
+            "humidity_pct": 44.4,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733088,
+          "payload": {
+            "light_lux": 324,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733088,
+          "payload": {
+            "noise_db": 38,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733762,
+          "payload": {
+            "temperature_c": 24.8,
+            "humidity_pct": 44.0,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733762,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733762,
+          "payload": {
+            "noise_db": 43,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733806,
+          "payload": {
+            "temperature_c": 24.8,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733806,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733806,
+          "payload": {
+            "noise_db": 36,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733807,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733807,
+          "payload": {
+            "light_lux": 324,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733807,
+          "payload": {
+            "noise_db": 36,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733808,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733808,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733808,
+          "payload": {
+            "noise_db": 35,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733809,
+          "payload": {
+            "temperature_c": 24.8,
+            "humidity_pct": 44.0,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733809,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733809,
+          "payload": {
+            "noise_db": 38,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733811,
+          "payload": {
+            "temperature_c": 24.8,
+            "humidity_pct": 44.0,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733811,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733811,
+          "payload": {
+            "noise_db": 36,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780733812,
+          "payload": {
+            "temperature_c": 24.8,
+            "humidity_pct": 43.9,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780733812,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780733812,
+          "payload": {
+            "noise_db": 38,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734143,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 43.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734143,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734143,
+          "payload": {
+            "noise_db": 37,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734144,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 43.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734144,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734144,
+          "payload": {
+            "noise_db": 37,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734145,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 43.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734145,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734145,
+          "payload": {
+            "noise_db": 34,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734147,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 43.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734147,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734147,
+          "payload": {
+            "noise_db": 35,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734149,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 43.3,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734149,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734149,
+          "payload": {
+            "noise_db": 37,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734151,
+          "payload": {
+            "temperature_c": 24.5,
+            "humidity_pct": 42.9,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734151,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734151,
+          "payload": {
+            "noise_db": 36,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734154,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 42.9,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734154,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734154,
+          "payload": {
+            "noise_db": 34,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734155,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 43.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734155,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734155,
+          "payload": {
+            "noise_db": 35,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734156,
+          "payload": {
+            "temperature_c": 24.6,
+            "humidity_pct": 43.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734156,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734156,
+          "payload": {
+            "noise_db": 40,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734622,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734622,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734622,
+          "payload": {
+            "noise_db": 38,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734624,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734624,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734624,
+          "payload": {
+            "noise_db": 45,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734627,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.3,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734627,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734627,
+          "payload": {
+            "noise_db": 38,
+            "source": "esp32_usb_v1:noise",
+            "level": "low",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734629,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734629,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734629,
+          "payload": {
+            "noise_db": 54,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734631,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.2,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734631,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734631,
+          "payload": {
+            "noise_db": 54,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        },
+        {
+          "type": "temperature_humidity_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "temperature_c": 24.7,
+            "humidity_pct": 44.1,
+            "source": "esp32_usb_v1:temp_humidity",
+            "temperature_level": "normal",
+            "humidity_level": "normal"
+          }
+        },
+        {
+          "type": "light_level_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "light_lux": 323,
+            "source": "esp32_usb_v1:lux",
+            "level": "bright",
+            "is_low_light": false
+          }
+        },
+        {
+          "type": "noise_level_updated",
+          "timestamp": 1780734634,
+          "payload": {
+            "noise_db": 52,
+            "source": "esp32_usb_v1:noise",
+            "level": "normal",
+            "is_noisy": false
+          }
+        }
+      ],
       "focus_sessions": [
         {
           "start_ts": 1775630705,
@@ -263,7 +1583,450 @@
           "triggered_by": "cli",
           "reason": "timer_complete"
         }
+      ],
+      "focus_session_count": 0,
+      "focus_total_duration_sec": 0,
+      "distraction_event_count": 0,
+      "state_change_counts": {
+        "user_fatigue_updated": 73,
+        "user_presence_updated": 20,
+        "user_attention_updated": 20,
+        "user_emotion_updated": 44
+      },
+      "emotion_samples": [
+        {
+          "timestamp": 1780732979,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732980,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732981,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732982,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732983,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732984,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732985,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732986,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732987,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732988,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732989,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732990,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732991,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732992,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732993,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780732994,
+          "emotion": "stressed",
+          "confidence": 0.9922961592674255,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "disgust"
+        },
+        {
+          "timestamp": 1780734142,
+          "emotion": "neutral",
+          "confidence": 0.9997126460075378,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734143,
+          "emotion": "neutral",
+          "confidence": 0.9997126460075378,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734144,
+          "emotion": "neutral",
+          "confidence": 0.9997126460075378,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734145,
+          "emotion": "neutral",
+          "confidence": 0.9836026430130005,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734146,
+          "emotion": "neutral",
+          "confidence": 0.9993640780448914,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734147,
+          "emotion": "neutral",
+          "confidence": 0.9993640780448914,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734148,
+          "emotion": "neutral",
+          "confidence": 0.9988484382629395,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734149,
+          "emotion": "neutral",
+          "confidence": 0.9988484382629395,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734150,
+          "emotion": "neutral",
+          "confidence": 0.9988484382629395,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734151,
+          "emotion": "neutral",
+          "confidence": 0.9971643090248108,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734152,
+          "emotion": "neutral",
+          "confidence": 0.9971643090248108,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734153,
+          "emotion": "neutral",
+          "confidence": 0.9995433688163757,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734154,
+          "emotion": "neutral",
+          "confidence": 0.9995433688163757,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734155,
+          "emotion": "neutral",
+          "confidence": 0.9941163063049316,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734621,
+          "emotion": "neutral",
+          "confidence": 0.9992569088935852,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734622,
+          "emotion": "neutral",
+          "confidence": 0.9992569088935852,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734623,
+          "emotion": "neutral",
+          "confidence": 0.9996960163116455,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734624,
+          "emotion": "neutral",
+          "confidence": 0.9996960163116455,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734625,
+          "emotion": "neutral",
+          "confidence": 0.9996960163116455,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734626,
+          "emotion": "neutral",
+          "confidence": 0.9967390894889832,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734627,
+          "emotion": "neutral",
+          "confidence": 0.9967390894889832,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734628,
+          "emotion": "neutral",
+          "confidence": 0.9881407022476196,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734629,
+          "emotion": "neutral",
+          "confidence": 0.9881407022476196,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734630,
+          "emotion": "neutral",
+          "confidence": 0.9987466335296631,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734631,
+          "emotion": "neutral",
+          "confidence": 0.9987466335296631,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734632,
+          "emotion": "neutral",
+          "confidence": 0.9995323419570923,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734633,
+          "emotion": "neutral",
+          "confidence": 0.9995323419570923,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        },
+        {
+          "timestamp": 1780734634,
+          "emotion": "neutral",
+          "confidence": 0.9966592788696289,
+          "person_id": null,
+          "source": "camera",
+          "model": "raf-db",
+          "raw_emotion": "neutral"
+        }
+      ],
+      "emotion_summaries": [
+        {
+          "start_ts": 1780732919,
+          "end_ts": 1780732979,
+          "window_sec": 60,
+          "sample_count": 1,
+          "dominant_emotion": "stressed",
+          "distribution": {
+            "stressed": 1.0
+          },
+          "avg_confidence": 0.992
+        },
+        {
+          "start_ts": 1780734082,
+          "end_ts": 1780734142,
+          "window_sec": 60,
+          "sample_count": 1,
+          "dominant_emotion": "neutral",
+          "distribution": {
+            "neutral": 1.0
+          },
+          "avg_confidence": 1.0
+        },
+        {
+          "start_ts": 1780734561,
+          "end_ts": 1780734621,
+          "window_sec": 60,
+          "sample_count": 1,
+          "dominant_emotion": "neutral",
+          "distribution": {
+            "neutral": 1.0
+          },
+          "avg_confidence": 0.999
+        }
       ]
-    }
+    },
+    "current_user_id": "default"
   }
 }

@@ -4,23 +4,15 @@ from __future__ import annotations
 
 import os
 import threading
-from enum import Enum
+import time
 
 import pygame
+
+from src.adapters.screen.pet_renderer import AgentState, draw_pet_frame
 
 DEFAULT_WINDOW_SIZE = (400, 320)
 BG_COLOR = (30, 30, 40)
 FPS = 30
-
-
-class AgentState(Enum):
-    """Agent display states."""
-
-    IDLE = "idle"
-    LISTENING = "listening"
-    THINKING = "thinking"
-    SPEAKING = "speaking"
-    FOCUS_MODE = "focus_mode"
 
 
 def _parse_size_env() -> tuple[int, int] | None:
@@ -81,16 +73,29 @@ class ScreenWindow:
         fullscreen: bool | None = None,
         size: tuple[int, int] | None = None,
     ) -> None:
-        pygame.init()
+        if not os.environ.get("DISPLAY"):
+            # VNC 默认 :1；SSH 无 DISPLAY 时 pygame 无法开窗口
+            if os.path.exists("/tmp/.X11-unix/X1"):
+                os.environ.setdefault("DISPLAY", ":1")
+        os.environ.setdefault("SDL_VIDEODRIVER", "x11")
+        if not pygame.get_init():
+            pygame.init()
+        if not pygame.display.get_init():
+            pygame.display.init()
         self._fullscreen = _env_fullscreen() if fullscreen is None else bool(fullscreen)
         self._requested_size = size or _parse_size_env() or DEFAULT_WINDOW_SIZE
 
-        if self._fullscreen:
-            display_info = pygame.display.Info()
-            w = max(display_info.current_w, 320)
-            h = max(display_info.current_h, 240)
-            self._screen = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
-        else:
+        try:
+            if self._fullscreen:
+                display_info = pygame.display.Info()
+                w = max(display_info.current_w, 320)
+                h = max(display_info.current_h, 240)
+                self._screen = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
+            else:
+                self._screen = pygame.display.set_mode(self._requested_size)
+        except pygame.error:
+            # 全屏/Info 失败时回退固定窗口，避免整栈退出
+            self._fullscreen = False
             self._screen = pygame.display.set_mode(self._requested_size)
 
         self._width, self._height = self._screen.get_size()
@@ -148,6 +153,7 @@ class ScreenWindow:
 
     def _run_loop(self) -> None:
         """Main pygame event loop."""
+        egl_errors = 0
         while self._running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -159,7 +165,15 @@ class ScreenWindow:
                 self._draw()
 
             self._clock.tick(FPS)
-            pygame.display.flip()
+            try:
+                pygame.display.flip()
+            except pygame.error as exc:
+                egl_errors += 1
+                if egl_errors == 1:
+                    print(f"[ScreenWindow] 显示刷新失败（{exc}），桌宠画面已停用。", flush=True)
+                if egl_errors >= 3:
+                    self._running = False
+                time.sleep(0.05)
 
     def _dim(self, fraction: float) -> int:
         """Scale a layout unit against the shorter screen edge."""
@@ -167,108 +181,12 @@ class ScreenWindow:
 
     def _draw(self) -> None:
         """Draw current frame."""
-        self._screen.fill(BG_COLOR)
-        state = self._agent_state
-
-        self._draw_face(state)
-
-        if self._speak_text:
-            self._draw_text(
-                self._speak_text,
-                (self._width // 2, int(self._height * 0.72)),
-                size=self._dim(0.045),
-            )
-
-        if state == AgentState.FOCUS_MODE and self._focus_duration > 0:
-            self._draw_focus_timer()
-
-        self._draw_text(
-            state.value.upper(),
-            (self._width // 2, int(self._height * 0.08)),
-            size=self._dim(0.05),
-        )
-
-    def _draw_face(self, state: AgentState) -> None:
-        """Draw simple face: two eyes + one mouth."""
-        cx = self._width // 2
-        cy = int(self._height * 0.38)
-        eye_spacing = self._dim(0.125)
-        eye_y = cy - self._dim(0.03)
-        eye_radius = self._dim(0.03)
-
-        pygame.draw.circle(self._screen, (255, 255, 255), (cx - eye_spacing, eye_y), eye_radius)
-        pygame.draw.circle(self._screen, (255, 255, 255), (cx + eye_spacing, eye_y), eye_radius)
-
-        pupil_color = (50, 50, 50)
-        if state == AgentState.LISTENING:
-            pupil_r = max(4, eye_radius * 7 // 12)
-            pygame.draw.circle(self._screen, pupil_color, (cx - eye_spacing, eye_y), pupil_r)
-            pygame.draw.circle(self._screen, pupil_color, (cx + eye_spacing, eye_y), pupil_r)
-        elif state == AgentState.THINKING:
-            pupil_r = max(3, eye_radius // 3)
-            pygame.draw.circle(self._screen, pupil_color, (cx - eye_spacing, eye_y), pupil_r)
-            pygame.draw.circle(self._screen, pupil_color, (cx + eye_spacing, eye_y), pupil_r)
-        elif state == AgentState.SPEAKING:
-            pupil_r = max(4, eye_radius // 2)
-            pygame.draw.circle(self._screen, pupil_color, (cx - eye_spacing, eye_y), pupil_r)
-            pygame.draw.circle(self._screen, pupil_color, (cx + eye_spacing, eye_y), pupil_r)
-            self._draw_mouth(cx, cy + self._dim(0.12), open=True)
-            return
-        elif state == AgentState.FOCUS_MODE:
-            pupil_r = max(3, eye_radius * 5 // 12)
-            pygame.draw.circle(self._screen, pupil_color, (cx - eye_spacing, eye_y), pupil_r)
-            pygame.draw.circle(self._screen, pupil_color, (cx + eye_spacing, eye_y), pupil_r)
-        else:
-            pupil_r = max(4, eye_radius // 2)
-            pygame.draw.circle(self._screen, pupil_color, (cx - eye_spacing, eye_y), pupil_r)
-            pygame.draw.circle(self._screen, pupil_color, (cx + eye_spacing, eye_y), pupil_r)
-
-        self._draw_mouth(cx, cy + self._dim(0.12), open=False)
-
-    def _draw_mouth(self, cx: int, cy: int, open: bool) -> None:
-        """Draw mouth as a line or open oval."""
-        mouth_w = self._dim(0.075)
-        mouth_h = max(8, self._dim(0.035))
-        line_w = max(2, self._dim(0.008))
-        if open:
-            pygame.draw.ellipse(
-                self._screen,
-                (255, 100, 100),
-                (cx - mouth_w, cy - mouth_h // 2, mouth_w * 2, mouth_h),
-            )
-        else:
-            pygame.draw.line(
-                self._screen,
-                (255, 255, 255),
-                (cx - mouth_w, cy),
-                (cx + mouth_w, cy),
-                line_w,
-            )
-
-    def _draw_text(self, text: str, pos: tuple[int, int], size: int = 24) -> None:
-        """Draw text at position."""
-        font = pygame.font.Font(None, max(12, size))
-        surface = font.render(text, True, (255, 255, 255))
-        rect = surface.get_rect(center=pos)
-        self._screen.blit(surface, rect)
-
-    def _draw_focus_timer(self) -> None:
-        """Draw focus countdown."""
-        if self._focus_duration <= 0:
-            return
-        minutes = self._focus_remaining // 60
-        seconds = self._focus_remaining % 60
-        time_str = f"{minutes:02d}:{seconds:02d}"
-        self._draw_text(time_str, (self._width // 2, int(self._height * 0.82)), size=self._dim(0.12))
-
-        progress = self._focus_remaining / self._focus_duration if self._focus_duration > 0 else 0
-        bar_width = int(self._width * 0.5)
-        bar_height = max(8, self._dim(0.025))
-        bar_x = (self._width - bar_width) // 2
-        bar_y = int(self._height * 0.9)
-        pygame.draw.rect(self._screen, (60, 60, 80), (bar_x, bar_y, bar_width, bar_height))
-        pygame.draw.rect(
+        draw_pet_frame(
             self._screen,
-            (100, 200, 100),
-            (bar_x, bar_y, int(bar_width * progress), bar_height),
+            width=self._width,
+            height=self._height,
+            agent_state=self._agent_state,
+            speak_text=self._speak_text,
+            focus_remaining=self._focus_remaining,
+            focus_duration=self._focus_duration,
         )

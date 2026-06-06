@@ -217,7 +217,23 @@ class VisionAffectInputAdapter:
                 f"[vision_affect] 无法打开摄像头 index={self._cfg.camera_index}",
                 file=sys.stderr,
             )
+            from src.adapters.perception_debug_log import perception_debug
+
+            perception_debug().log(
+                "vision",
+                "camera_open_failed",
+                camera_index=self._cfg.camera_index,
+            )
             return
+        from src.adapters.perception_debug_log import perception_debug
+
+        perception_debug().log(
+            "vision",
+            "camera_opened",
+            camera_index=self._cfg.camera_index,
+            emotion_backend=self._cfg.emotion_backend,
+        )
+        last_no_face_log_mono = 0.0
         face_mesh = mp.solutions.face_mesh.FaceMesh(
             max_num_faces=self._cfg.face_mesh_max_faces,
             refine_landmarks=self._cfg.face_mesh_refine_landmarks,
@@ -240,6 +256,15 @@ class VisionAffectInputAdapter:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 res = face_mesh.process(rgb)
                 if not res.multi_face_landmarks:
+                    no_face_now = monotonic_ts()
+                    if no_face_now - last_no_face_log_mono >= 5.0:
+                        last_no_face_log_mono = no_face_now
+                        perception_debug().log(
+                            "vision",
+                            "no_face",
+                            camera_index=self._cfg.camera_index,
+                            frame_size=f"{w}x{h}",
+                        )
                     self._sleep_remainder(t0)
                     continue
                 lm = res.multi_face_landmarks[0]
@@ -397,6 +422,9 @@ class VisionAffectInputAdapter:
                 pr = self._emotion_backend.predict(job.crop)
             except Exception as exc:
                 print(f"[vision_affect] 情绪推理失败: {exc}", file=sys.stderr)
+                from src.adapters.perception_debug_log import perception_debug
+
+                perception_debug().log("emotion", "infer_failed", error=str(exc))
                 continue
             if pr.is_empty:
                 continue
@@ -437,6 +465,18 @@ class VisionAffectInputAdapter:
             confidence=summary.avg_confidence,
             timestamp=summary.timestamp,
         )
+        from src.adapters.perception_debug_log import perception_debug
+
+        perception_debug().log(
+            "fatigue",
+            "detected",
+            level=summary.fatigue_level,
+            perclos=round(float(eye_perclos), 4) if eye_perclos is not None else None,
+            yawn_ratio=round(float(yawn_ratio), 4) if yawn_ratio is not None else None,
+            yawn_in_window=yawn_flag,
+            confidence=round(float(summary.avg_confidence), 4),
+            timestamp=summary.timestamp,
+        )
 
     def _emit_emotion_second_summary(self, summary: EmotionSecondSummary) -> None:
         emo_key = summary.emotion_key
@@ -460,6 +500,17 @@ class VisionAffectInputAdapter:
                 except Exception as exc:
                     print(f"[vision_affect] 情绪状态写入 SQLite 失败: {exc}", file=sys.stderr)
             self._sink.handle_event(event)
+            from src.adapters.perception_debug_log import perception_debug
+
+            perception_debug().log(
+                "emotion",
+                "detected",
+                emotion=str(event.payload.get("emotion", "unknown")),
+                raf_emotion=event.payload.get("raf_emotion"),
+                confidence=round(float(summary.avg_confidence), 4),
+                backend="raf-db",
+                timestamp=summary.timestamp,
+            )
             return
 
         if emo_key.startswith("emo:"):
@@ -488,6 +539,16 @@ class VisionAffectInputAdapter:
                     source=self._cfg.emotion_event_source,
                     model=model_name,
                 )
+            )
+            from src.adapters.perception_debug_log import perception_debug
+
+            perception_debug().log(
+                "emotion",
+                "detected",
+                emotion=emotion,
+                confidence=round(float(summary.avg_confidence), 4),
+                backend=model_name,
+                timestamp=summary.timestamp,
             )
 
     def query_state_seconds(self, *, start_ts: int, end_ts: int) -> dict[str, dict[str, int]]:

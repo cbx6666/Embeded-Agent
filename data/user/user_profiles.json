@@ -1,0 +1,28 @@
+{
+  "updated_at": 1780734634,
+  "profiles": {
+    "default": {
+      "info": {
+        "user_id": "default",
+        "display_name": "default",
+        "age": null,
+        "gender": null,
+        "identity": null,
+        "hobbies": [],
+        "created_at": 1779473167.0349262,
+        "updated_at": 1780734634.0,
+        "last_seen_at": 1780734634.0
+      },
+      "preference": {
+        "favorite_content_types": [],
+        "favorite_music_styles": [],
+        "disliked_topics": [],
+        "reminder_style": null,
+        "speech_style": null,
+        "tts_voice": null,
+        "tts_speed": null,
+        "tts_volume": null
+      }
+    }
+  }
+}

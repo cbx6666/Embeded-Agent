@@ -2,10 +2,14 @@ from __future__ import annotations
 
 """Ascend ACL OM 推理会话（表情 WuJie、YOLO OM 等共用）。"""
 
+import threading
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+_registry_lock = threading.Lock()
+_sessions_by_key: dict[tuple[str, int], "AscendOmSession"] = {}
 
 
 def import_acl() -> Any:
@@ -38,6 +42,7 @@ class _AclDeviceRuntime:
         self.acl: Any = None
         self.ctx: Any = None
         self._ready = False
+        self._lock = threading.RLock()
 
     @classmethod
     def get(cls, device_id: int) -> "_AclDeviceRuntime":
@@ -113,51 +118,54 @@ class AscendOmSession:
             return True
         if not self.available():
             return False
-        if not self._runtime.ensure_ready():
-            return False
-        acl = self._runtime.acl
-        try:
-            if not self._runtime.activate():
+        with self._runtime._lock:
+            if self._loaded:
+                return True
+            if not self._runtime.ensure_ready():
                 return False
+            acl = self._runtime.acl
+            try:
+                if not self._runtime.activate():
+                    return False
 
-            model_id, ret = acl.mdl.load_from_file(str(self.model_path))
-            if ret != 0:
-                return False
-            model_desc = acl.mdl.create_desc()
-            if acl.mdl.get_desc(model_desc, model_id) != 0:
-                return False
+                model_id, ret = acl.mdl.load_from_file(str(self.model_path))
+                if ret != 0:
+                    return False
+                model_desc = acl.mdl.create_desc()
+                if acl.mdl.get_desc(model_desc, model_id) != 0:
+                    return False
 
-            in_size = int(acl.mdl.get_input_size_by_index(model_desc, 0))
-            out_size = int(acl.mdl.get_output_size_by_index(model_desc, 0))
-            in_dev, ret = acl.rt.malloc(in_size, 0)
-            if ret != 0:
-                return False
-            out_dev, ret = acl.rt.malloc(out_size, 0)
-            if ret != 0:
-                return False
+                in_size = int(acl.mdl.get_input_size_by_index(model_desc, 0))
+                out_size = int(acl.mdl.get_output_size_by_index(model_desc, 0))
+                in_dev, ret = acl.rt.malloc(in_size, 0)
+                if ret != 0:
+                    return False
+                out_dev, ret = acl.rt.malloc(out_size, 0)
+                if ret != 0:
+                    return False
 
-            in_ds = acl.mdl.create_dataset()
-            out_ds = acl.mdl.create_dataset()
-            in_db = acl.create_data_buffer(in_dev, in_size)
-            out_db = acl.create_data_buffer(out_dev, out_size)
-            if acl.mdl.add_dataset_buffer(in_ds, in_db) is None:
-                return False
-            if acl.mdl.add_dataset_buffer(out_ds, out_db) is None:
-                return False
+                in_ds = acl.mdl.create_dataset()
+                out_ds = acl.mdl.create_dataset()
+                in_db = acl.create_data_buffer(in_dev, in_size)
+                out_db = acl.create_data_buffer(out_dev, out_size)
+                if acl.mdl.add_dataset_buffer(in_ds, in_db) is None:
+                    return False
+                if acl.mdl.add_dataset_buffer(out_ds, out_db) is None:
+                    return False
 
-            self._model_id = int(model_id)
-            self._model_desc = model_desc
-            self._input_dataset = in_ds
-            self._output_dataset = out_ds
-            self._input_dev = int(in_dev)
-            self._output_dev = int(out_dev)
-            self._input_size = in_size
-            self._output_size = out_size
-            self._loaded = True
-        except Exception:
-            self._loaded = False
-            return False
-        return True
+                self._model_id = int(model_id)
+                self._model_desc = model_desc
+                self._input_dataset = in_ds
+                self._output_dataset = out_ds
+                self._input_dev = int(in_dev)
+                self._output_dev = int(out_dev)
+                self._input_size = in_size
+                self._output_size = out_size
+                self._loaded = True
+            except Exception:
+                self._loaded = False
+                return False
+            return True
 
     def execute(self, input_tensor: np.ndarray) -> np.ndarray | None:
         """input_tensor 须为 C 连续 float32，字节数与 OM 输入一致。"""
@@ -167,27 +175,37 @@ class AscendOmSession:
         x = np.ascontiguousarray(input_tensor, dtype=np.float32)
         if x.nbytes != self._input_size:
             return None
-        try:
-            if not self._runtime.activate():
-                return None
-            raw = x.tobytes()
-            host_ptr = acl.util.bytes_to_ptr(raw)
-            if acl.rt.memcpy(self._input_dev, self._input_size, host_ptr, len(raw), 1) != 0:
-                return None
-            if acl.mdl.execute(self._model_id, self._input_dataset, self._output_dataset) != 0:
-                return None
-            host_out, ret = acl.rt.malloc_host(self._output_size)
-            if ret != 0:
-                return None
+        with self._runtime._lock:
             try:
-                if (
-                    acl.rt.memcpy(host_out, self._output_size, self._output_dev, self._output_size, 2)
-                    != 0
-                ):
+                if not self._runtime.activate():
                     return None
-                out_bytes = acl.util.ptr_to_bytes(host_out, self._output_size)
-            finally:
-                acl.rt.free_host(host_out)
-        except Exception:
-            return None
+                raw = x.tobytes()
+                host_ptr = acl.util.bytes_to_ptr(raw)
+                if acl.rt.memcpy(self._input_dev, self._input_size, host_ptr, len(raw), 1) != 0:
+                    return None
+                if acl.mdl.execute(self._model_id, self._input_dataset, self._output_dataset) != 0:
+                    return None
+                host_out, ret = acl.rt.malloc_host(self._output_size)
+                if ret != 0:
+                    return None
+                try:
+                    if (
+                        acl.rt.memcpy(host_out, self._output_size, self._output_dev, self._output_size, 2)
+                        != 0
+                    ):
+                        return None
+                    out_bytes = acl.util.ptr_to_bytes(host_out, self._output_size)
+                finally:
+                    acl.rt.free_host(host_out)
+            except Exception:
+                return None
         return np.frombuffer(out_bytes, dtype=np.float32).copy()
+
+
+def shared_om_session(model_path: str | Path, device_id: int = 0) -> AscendOmSession:
+    """同一 .om + device 全局复用会话，避免多路重复 load 与并发 load 竞态。"""
+    key = (str(Path(model_path).resolve()), int(device_id))
+    with _registry_lock:
+        if key not in _sessions_by_key:
+            _sessions_by_key[key] = AscendOmSession(model_path, device_id)
+        return _sessions_by_key[key]

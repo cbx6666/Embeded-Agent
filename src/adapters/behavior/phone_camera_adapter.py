@@ -14,6 +14,7 @@ from src.adapters.behavior.phone_hand_detector import (
     dependencies_met,
 )
 from src.adapters.perception_config import behavior_inference_interval_sec
+from src.adapters.perception_debug_log import perception_debug
 from src.adapters.behavior_adapter import BehaviorAdapter
 
 
@@ -64,6 +65,13 @@ class PhoneHandCameraAdapter:
 
     def _run_loop(self) -> None:
         self.detector.load_models()
+        perception_debug().log(
+            "behavior",
+            "detector_ready",
+            camera_index=self.camera_index,
+            backend=self.detector.active_backend,
+            shared_frame_bus=self.frame_bus is not None,
+        )
         own_cap = None
         if self.frame_bus is None:
             cap = open_camera(self.camera_index)
@@ -98,6 +106,21 @@ class PhoneHandCameraAdapter:
                     continue
                 last_infer = now
                 result = self.detector.analyze_frame_stable(frame)
+                perception_debug().log(
+                    "behavior",
+                    "frame_result",
+                    backend=self.detector.active_backend,
+                    phone_in_hand=result.phone_in_hand,
+                    confidence=round(float(result.confidence), 4),
+                    person_visible=result.person_visible,
+                    presence_phase=result.presence_phase,
+                    posture=result.posture,
+                    activity=result.activity,
+                    looking_down=result.looking_down,
+                    head_down_assist=result.head_down_assist,
+                    raw_phone_count=result.raw_phone_count,
+                    person_count_pose=result.person_count_pose,
+                )
                 if result.person_visible:
                     self.behavior.publish_presence("present", confidence=0.9, source=self.source)
                 elif result.presence_phase == "left":

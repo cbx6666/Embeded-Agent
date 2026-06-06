@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from src.adapters.vision_affect.backends.protocols import EmotionPredictResult
-from src.adapters.vision_common.acl_runtime import AscendOmSession
+from src.adapters.vision_common.acl_runtime import shared_om_session
 from src.adapters.vision_common.preprocess import resize_gray_face_patch
 
 
@@ -20,7 +20,7 @@ class WuJieOmBackend:
     model_path: str | Path | None
     device_id: int = 0
 
-    _session: AscendOmSession | None = field(default=None, repr=False)
+    _session: Any | None = field(default=None, repr=False)
 
     def available(self) -> bool:
         if self.model_path is None:
@@ -32,7 +32,7 @@ class WuJieOmBackend:
             return True
         if not self.available():
             return False
-        self._session = AscendOmSession(self.model_path, device_id=self.device_id)
+        self._session = shared_om_session(self.model_path, device_id=self.device_id)
         return self._session.load()
 
     def predict(self, crop_bgr: np.ndarray) -> EmotionPredictResult:
