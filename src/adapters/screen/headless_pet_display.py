@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.adapters.screen.pet_display_context import PetDisplayContext
 from src.adapters.screen.pet_preview_server import PetPreviewServer
 from src.adapters.screen.pet_renderer import render_pet_png_bytes
 
@@ -13,14 +14,11 @@ class HeadlessPetDisplay:
         self,
         preview_server: PetPreviewServer,
         *,
-        size: tuple[int, int] = (480, 360),
+        size: tuple[int, int] = (960, 540),
     ) -> None:
         self._server = preview_server
         self._width, self._height = size
-        self._agent_state = "idle"
-        self._speak_text = ""
-        self._focus_remaining = 0
-        self._focus_duration = 0
+        self._context = PetDisplayContext()
 
     @property
     def size(self) -> tuple[int, int]:
@@ -36,25 +34,19 @@ class HeadlessPetDisplay:
     def stop(self) -> None:
         self._server.stop()
 
-    def update(
-        self,
-        agent_state: str,
-        speak_text: str = "",
-        focus_remaining: int = 0,
-        focus_duration: int = 0,
-    ) -> None:
-        self._agent_state = agent_state
-        self._speak_text = speak_text
-        self._focus_remaining = focus_remaining
-        self._focus_duration = focus_duration
+    def update(self, context: PetDisplayContext) -> None:
+        self._context = context
         self._push_frame()
 
     def _push_frame(self) -> None:
+        ctx = self._context
         png = render_pet_png_bytes(
-            agent_state=self._agent_state,
-            speak_text=self._speak_text,
-            focus_remaining=self._focus_remaining,
-            focus_duration=self._focus_duration,
+            agent_state=ctx.agent_state,
+            speak_text=ctx.speak_text,
+            focus_remaining=ctx.focus_remaining,
+            focus_duration=ctx.focus_duration,
             size=(self._width, self._height),
+            status_label=ctx.status_label,
+            context=ctx,
         )
-        self._server.set_frame(png, state_label=self._agent_state)
+        self._server.set_frame(png, state_label=ctx.agent_state)

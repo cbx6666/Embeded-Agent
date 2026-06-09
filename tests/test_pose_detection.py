@@ -7,7 +7,7 @@ import numpy as np
 from src.adapters.behavior.pose_inference import infer_posture_and_activity
 from src.adapters.vision_common.yolo_ultralytics_ops import PosePerson
 from src.agent.event import Event
-from src.agent.reducer import reduce_state
+from src.agent.state.reducer import reduce_state
 from src.agent.state import AgentState
 
 

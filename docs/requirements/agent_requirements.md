@@ -1,4 +1,4 @@
-﻿# 嵌入式智能陪伴 Agent 需求文档
+# 嵌入式智能陪伴 Agent 需求文档
 
 版本：V1  
 阶段：总体需求定义
@@ -351,9 +351,9 @@
 
 ### 12.3 决策机制
 
-系统应通过唯一主链路 `Event -> RuntimeHistory -> LongTermMemoryPipeline -> PersonalContextBuilder -> DecisionPipeline -> Action[]` 完成当前决策。`Reducer` 只做状态归约，`LongTermMemoryPipeline` 负责长期学习用户，`PersonalContextBuilder` 负责生成决策上下文，`DecisionPipeline` 负责本轮候选生成、规划、安全过滤、冲突仲裁和动作落地。
+系统应通过主链路 `Event -> reduce_state -> RuntimeHistory -> EventRouter -> Handler -> ActionRealizer -> DeviceAdapter` 完成当前决策。`Reducer` 只做状态归约；`EventRouter` 把事件分到语音 LLM、周期状态 LLM、规则或纯状态更新四类之一；`MemoryService` 异步记录语音中的用户偏好并在 LLM 前检索；`Guard` 负责提醒类动作的确定性安全边界。
 
-系统应采用 Policy-driven 架构：Python 负责 Engine，YAML 负责 Policy，LLM 负责 Reasoning，Memory 负责 Personalization。稳定业务阈值、优先级、冷却时间、冲突关系、提醒文案、LLM 使用策略和长期记忆阈值应通过 YAML 配置管理。
+系统应采用 Policy-driven 架构：Python 负责 Engine，`policy_config.py` 负责策略参数，LLM 在固定入口参与语义推理（`speech_recognized` 与用户语音；自主检查 `behavior_distraction_check` / `wellness_care_check` / `environment_care_check`；`sensor_status_report` 为确定性播报不调 LLM）。冷却时间、提醒文案、分流规则、偏好写入门槛等通过策略 dataclass 管理。
 
 系统应基于当前状态、事件、长期记忆和个性化策略，决定：
 
@@ -382,7 +382,7 @@ LLM 可以参与复杂文本理解、候选意图排序、参数补全和回复�
 当某些感知模块暂时不可用时，系统仍应能够在降级模式下运行。例如：
 
 1. 无视觉输入时仍可支持手动专注模式。
-2. 无语音输入时仍可支持文本输入。
+2. 无语音输入时仍可支持结构化 CLI 命令（如专注开始/停止）。
 3. 无环境传感器时仍可运行其他核心功能。
 
 ### 13.3 异常状态提示
@@ -407,7 +407,7 @@ LLM 可以参与复杂文本理解、候选意图排序、参数补全和回复�
 2. 语音输入输出模块。
 3. 灯光控制模块。
 4. 本地数据库。
-5. 当前架构以 LLM-centered DecisionPipeline 为准，确定性边界只负责校验、过滤和动作落地。
+5. 当前架构以双 LLM 入口 + 规则分支为准，确定性边界负责 Guard、动作闭集与设备执行。
 6. 更强的模型推理模块。
 
 ### 14.4 可维护性
@@ -416,7 +416,7 @@ LLM 可以参与复杂文本理解、候选意图排序、参数补全和回复�
 
 ### 14.5 可测试性
 
-系统应支持在无真实硬件条件下通过 mock 输入和日志输出进行开发与测试。
+系统应支持在无真实硬件条件下通过 mock 输入和日志输出进行开发与测试。深入验收流程见 `docs/testing/agent_functional_test_guide.md`。
 
 ## 十五、当前阶段开发边界
 
@@ -424,12 +424,12 @@ LLM 可以参与复杂文本理解、候选意图排序、参数补全和回复�
 
 1. 软件核心运行时。
 2. 状态管理与事件驱动框架。
-3. 文本输入交互。
+3. 语音输入交互（`speech_recognized`）与结构化 CLI 控制。
 4. 专注模式。
 5. mock 用户状态输入。
 6. 简单主动提醒。
 7. 本地记录与统计基础能力。
-8. 长期行为记忆与个性化策略的基础闭环。
+8. 偏好记忆（`MemoryService`）与周期状态提醒的基础闭环。
 
 ### 15.2 当前阶段暂不优先实现的内容
 
@@ -449,10 +449,10 @@ LLM 可以参与复杂文本理解、候选意图排序、参数补全和回复�
 ```text
 感知
 -> Reducer 状态归约
--> LongTermMemoryPipeline 长期学习
--> DecisionPipeline 当前决策
--> 多模态反馈
--> 数据记录与统计
+-> EventRouter 分流
+-> speech_llm / behavior_distraction / wellness_care / environment_care / sensor_status / rule
+-> speak + display + timer（多模态反馈）
+-> RuntimeHistory + 偏好记忆 + 统计
 ```
 
 当前阶段的工作重点应放在软件核心与整体架构打底，在此基础上逐步接入视觉、语音、环境传感器与显示控制，实现完整嵌入式智能陪伴终端。

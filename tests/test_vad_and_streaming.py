@@ -3,8 +3,7 @@ from __future__ import annotations
 import struct
 import unittest
 
-from src.adapters.voice.vad_recorder import VadConfig, detect_end_frame_index, frames_contain_speech, pcm_rms
-from src.adapters.voice.voice_streaming import SentenceChunker
+from src.adapters.voice.vad.recorder import VadConfig, detect_end_frame_index, frames_contain_speech, pcm_rms
 
 
 class VadRecorderTestCase(unittest.TestCase):
@@ -33,17 +32,6 @@ class VadRecorderTestCase(unittest.TestCase):
         speech = struct.pack(f"<{frame_bytes // 2}h", *([6000] * (frame_bytes // 2)))
         self.assertFalse(frames_contain_speech([silence] * 20, config=cfg))
         self.assertTrue(frames_contain_speech([speech] * 15, config=cfg))
-
-
-class SentenceChunkerTestCase(unittest.TestCase):
-    def test_splits_chinese_sentences(self) -> None:
-        chunker = SentenceChunker()
-        ready = chunker.feed("你好。")
-        self.assertEqual(ready, ["你好。"])
-        ready = chunker.feed("我是小助")
-        self.assertEqual(ready, [])
-        ready = chunker.feed("。")
-        self.assertEqual(ready, ["我是小助。"])
 
 
 if __name__ == "__main__":

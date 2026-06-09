@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
+import warnings
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -12,6 +14,7 @@ if __package__ in {None, ""}:
 
 from src.adapters.cli_input import CLIInputAdapter, HELP_TEXT, parse_cli_event
 from src.adapters.console_output import ConsoleOutput
+from src.adapters.voice.wake.local_wake_ack import DEFAULT_WAKE_ACK_DIR, DEFAULT_WAKE_ACK_TEXT
 from src.adapters.mock_input import parse_mock_command
 from src.adapters.profile_cli import handle_profile_command
 from src.agent.core import build_default_core
@@ -31,6 +34,10 @@ class MultiOutput:
 
     def show_text(self, text: str) -> None:
         self.console.show_text(text)
+
+    def close(self) -> None:
+        if hasattr(self.console, "close"):
+            self.console.close()
 
 
 def _preload_npu_perception_models(
@@ -64,10 +71,19 @@ def _preload_npu_perception_models(
                     "[Warn] 未找到 models/yolo26/*.om，行为识别将回退 PyTorch CPU。"
                     " 请先 bash scripts/export_yolo26_to_om.sh 或设置 BEHAVIOR_DETECT_OM。"
                 )
+            try:
+                behavior_phone_conf = float(os.environ.get("BEHAVIOR_PHONE_CONF", "0.15"))
+            except (TypeError, ValueError):
+                behavior_phone_conf = 0.15
             behavior_detector = PhoneHandProximityDetector(
                 inference_backend=behavior_backend,
                 om_device_id=behavior_om_device,
                 imgsz=320,
+                phone_conf=behavior_phone_conf,
+            )
+            output.show_text(
+                f"行为识别手机检出阈值 phone_conf={behavior_phone_conf:.2f}"
+                "（越低越敏感，可用环境变量 BEHAVIOR_PHONE_CONF 调整）"
             )
             try:
                 output.show_text("正在主线程预加载行为 YOLO 模型（避免与语音/视觉 NPU 并发）…")
@@ -97,6 +113,51 @@ def _preload_npu_perception_models(
             output.show_text(f"[Warn] WuJie OM 预加载异常：{exc}")
 
     return behavior_detector
+
+
+def _warmup_vision_runtime_main_thread(
+    args: argparse.Namespace,
+    output: ConsoleOutput,
+) -> None:
+    """在 acl OM 预载之前，主线程先加载 MediaPipe(TensorFlow)。
+
+    本板上 TF 与 Ascend ACL OM 同进程共存时，若 TF 在 OM 之后加载会触发
+    ``CollectiveRegistry::Register`` 二次注册并 ``Aborted (core dumped)``。
+    先让 TF 的 .so 在主线程、OM 之前加载并完成注册，可避开该冲突；
+    后续后台采集线程再 import/创建 FaceMesh 时直接复用，不会重复注册。
+    """
+    if not getattr(args, "vision", False):
+        return
+    try:
+        from src.adapters.vision_affect import vision_dependencies_met
+        from src.adapters.vision_affect.config import VisionAffectConfig
+        from src.adapters.vision_affect.runtime_env import configure_ml_runtime_env
+    except Exception:
+        return
+    if not vision_dependencies_met():
+        return
+    configure_ml_runtime_env()
+    output.show_text("正在主线程预加载视觉运行时（MediaPipe/TF，须先于 NPU OM）…")
+    sys.stdout.flush()
+    try:
+        import numpy as np
+        import mediapipe as mp
+
+        cfg = VisionAffectConfig()
+        face_mesh = mp.solutions.face_mesh.FaceMesh(
+            static_image_mode=False,
+            max_num_faces=cfg.face_mesh_max_faces,
+            refine_landmarks=cfg.face_mesh_refine_landmarks,
+            min_detection_confidence=cfg.face_mesh_min_detection_confidence,
+            min_tracking_confidence=cfg.face_mesh_min_tracking_confidence,
+        )
+        # 跑一帧黑帧，强制把图与算子注册全部展开（注册发生在 .so 加载/首帧）
+        face_mesh.process(np.zeros((480, 640, 3), dtype=np.uint8))
+        face_mesh.close()
+        output.show_text("视觉运行时已就绪（MediaPipe/TF 已在 OM 前注册）。")
+        sys.stdout.flush()
+    except Exception as exc:
+        output.show_text(f"[Warn] 视觉运行时预加载失败（继续，其余功能不受影响）：{exc}")
 
 
 def _apply_run_profile(args: argparse.Namespace) -> None:
@@ -160,8 +221,25 @@ def _apply_run_profile(args: argparse.Namespace) -> None:
     if getattr(args, "screen_preview", False):
         args.no_screen = True
 
+def _suppress_third_party_noise() -> None:
+    """降低 MediaPipe / protobuf / TF 等在终端的刷屏，并配置 ML 运行时环境。"""
+    from src.adapters.vision_affect.runtime_env import configure_ml_runtime_env
+
+    configure_ml_runtime_env()
+    warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
+    warnings.filterwarnings("ignore", message=".*SymbolDatabase.GetPrototype.*")
+
+
+def _create_console_output(args: argparse.Namespace) -> ConsoleOutput:
+    """默认写文件并同步输出终端；--no-log-console 可仅写文件。"""
+    if args.no_log_file:
+        return ConsoleOutput()
+    log_console = not getattr(args, "no_log_console", False)
+    return ConsoleOutput(log_path=args.log_file, log_console=log_console)
+
 
 def main() -> None:
+    _suppress_third_party_noise()
     parser = argparse.ArgumentParser(
         description="Embeded-Agent：默认全栈（桌宠+视觉+语音+LLM）；--llm 仅 CLI Agent",
     )
@@ -298,30 +376,10 @@ def main() -> None:
         help="唤醒应答后采集用户说话的时长（秒），默认 6",
     )
     parser.add_argument(
-        "--post-ack-delay",
-        type=float,
-        default=0.5,
-        help="仅 --wake-record-timing after_ack 时：应答后再延迟开录（秒）",
-    )
-    parser.add_argument(
         "--post-ack-user-window",
         type=float,
         default=2.5,
-        help="sync 模式：应答播完后至少再录这么多秒才允许因静音停录（默认 2.5）",
-    )
-    parser.add_argument(
-        "--wake-record-timing",
-        type=str,
-        default="sync",
-        choices=("sync", "after_ack"),
-        help="sync=听到唤醒词立即开录，应答并行播放（默认）| after_ack=应答结束后再录",
-    )
-    parser.add_argument(
-        "--capture-mode",
-        type=str,
-        default="vad",
-        choices=("vad", "fixed"),
-        help="录音模式：vad=说完自动结束（默认）| fixed=固定时长",
+        help="唤醒应答播完后至少再录这么多秒才允许因静音停录（默认 2.5）",
     )
     parser.add_argument(
         "--max-capture-duration",
@@ -334,11 +392,6 @@ def main() -> None:
         type=float,
         default=0.8,
         help="VAD 检测到多少秒静音后结束录音，默认 0.8",
-    )
-    parser.add_argument(
-        "--no-cloud-streaming",
-        action="store_true",
-        help="关闭 LLM 流式 + 逐句 TTS（默认开启以加快首字出声）",
     )
     parser.add_argument(
         "--keep-voice-recordings",
@@ -359,8 +412,8 @@ def main() -> None:
     parser.add_argument(
         "--wake-ack",
         type=str,
-        default="我在，请说。",
-        help="云端回退时的唤醒短句（默认优先本地预加载 WAV）",
+        default=DEFAULT_WAKE_ACK_TEXT,
+        help="云端回退时的唤醒短句（默认优先本地预加载 WAV；权威文案见 local_wake_ack.py）",
     )
     parser.add_argument(
         "--wake-ack-mode",
@@ -372,7 +425,7 @@ def main() -> None:
     parser.add_argument(
         "--wake-ack-dir",
         type=str,
-        default="assets/voice/wake_ack",
+        default=str(DEFAULT_WAKE_ACK_DIR),
         help="本地唤醒应答 WAV 目录（含 manifest.json）",
     )
     parser.add_argument(
@@ -384,30 +437,25 @@ def main() -> None:
         "--voice-alsa-device",
         type=str,
         default="auto",
-        help="用户说话录音 ALSA 设备；auto=优先摄像头/USB 麦（默认），例 plughw:0,0",
+        help="用户说话录音 ALSA 设备；auto=按名称选摄像头麦；别名：camera/webcam/c920",
     )
     parser.add_argument(
         "--wake-alsa-device",
         type=str,
         default="auto",
-        help="唤醒词监听 ALSA 设备；auto=与 --voice-alsa-device 相同；"
-        "可与录音分离，例 plughw:1,0=扬声器盒子麦听唤醒，plughw:0,0 专录用户话",
+        help="唤醒词监听 ALSA 设备；auto=按名称选盒子麦(UAC)；"
+        "别名：box/uac/speaker；可与用户麦分离，例 --wake-alsa-device box --voice-alsa-device camera",
     )
     parser.add_argument(
-        "--wake-echo-trim",
+        "--voice-console",
         action="store_true",
-        help="唤醒录音后裁掉应答回声再送 ASR（默认不裁，整段原样识别）",
-    )
-    parser.add_argument(
-        "--no-persistent-capture",
-        action="store_true",
-        help="关闭摄像头麦常驻 arecord（唤醒后重新 open 设备，延迟更高）",
+        help="语音里程碑也打印到终端（默认仅写 voice_debug 日志）",
     )
     parser.add_argument(
         "--tts-alsa-device",
         type=str,
-        default="plughw:1,0",
-        help="扬声器播放 ALSA 设备（仅 TTS/应答，不用于录音）；auto=自动选非麦克风声卡",
+        default="auto",
+        help="扬声器播放 ALSA 设备；auto=按名称选盒子扬声器(UAC)；别名：box/uac/speaker",
     )
     parser.add_argument("--voice-sample-rate", type=int, default=16000, help="语音录音采样率")
     parser.add_argument("--tts-output-path", type=str, default="data/tts_output.wav", help="TTS 输出音频路径")
@@ -458,8 +506,8 @@ def main() -> None:
     parser.add_argument(
         "--wake-keywords-threshold",
         type=float,
-        default=0.25,
-        help="Sherpa 触发阈值，越大越难唤醒",
+        default=0.12,
+        help="Sherpa 触发阈值，越大越难唤醒（默认 0.12）",
     )
     parser.add_argument(
         "--wake-keywords-score",
@@ -531,6 +579,27 @@ def main() -> None:
         help="感知调试日志目录",
     )
     parser.add_argument(
+        "--perception-debug-console",
+        action="store_true",
+        help="感知调试日志同时打印到终端（默认仅写 perception.log）",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=str,
+        default="data/runtime/main.log",
+        help="主进程日志文件（Agent 输出与启动信息）",
+    )
+    parser.add_argument(
+        "--no-log-file",
+        action="store_true",
+        help="不写日志文件，仅输出到终端",
+    )
+    parser.add_argument(
+        "--no-log-console",
+        action="store_true",
+        help="主进程日志仅写文件，不输出到终端",
+    )
+    parser.add_argument(
         "--environment",
         action="store_true",
         help="启用 ESP32 USB 环境传感器（温湿度/光照/噪声）",
@@ -567,7 +636,7 @@ def main() -> None:
         "--env-dry-humidity-pct",
         type=float,
         default=None,
-        help="干燥阈值 %（默认 30）",
+        help="干燥阈值百分比（默认 30）",
     )
     parser.add_argument(
         "--env-noisy-db",
@@ -587,9 +656,11 @@ def main() -> None:
         if args.emotion_backend is None:
             args.emotion_backend = "wujie-om"
     _apply_run_profile(args)
+    if args.voice_console:
+        os.environ["EMBED_VOICE_CONSOLE"] = "1"
 
     if args.list_audio_devices:
-        from src.adapters.voice.alsa_audio_devices import (
+        from src.adapters.voice.input.alsa_audio_devices import (
             list_capture_devices,
             list_playback_devices,
             resolve_voice_pipeline_devices,
@@ -608,16 +679,20 @@ def main() -> None:
                 f"  {item['alsa_device']}  card={item['card']}  "
                 f"{item['card_name']} / {item['device_name']}"
             )
-        capture_dev, playback_dev = resolve_voice_pipeline_devices(
+        from src.adapters.voice.input.alsa_audio_devices import describe_device
+
+        user_dev, wake_dev, playback_dev = resolve_voice_pipeline_devices(
             capture_explicit=args.voice_alsa_device,
+            wake_explicit=args.wake_alsa_device,
             playback_explicit=args.tts_alsa_device,
         )
-        output.show_text("=== 推荐路由（录放分离）===")
-        output.show_text(f"  麦克风：{capture_dev}")
-        output.show_text(f"  扬声器：{playback_dev or '(未检测到)'}")
+        output.show_text("=== 推荐路由（按设备名称，不依赖 card 编号）===")
+        output.show_text(f"  唤醒监听：{describe_device(wake_dev)}")
+        output.show_text(f"  用户录音：{describe_device(user_dev)}")
+        output.show_text(f"  扬声器：{describe_device(playback_dev)}")
         return
 
-    output = ConsoleOutput()
+    output = _create_console_output(args)
     cli = CLIInputAdapter()
 
     from src.adapters.perception_debug_log import configure_perception_debug
@@ -625,11 +700,14 @@ def main() -> None:
     configure_perception_debug(
         enabled=bool(args.perception_debug),
         log_dir=args.perception_debug_dir,
+        console=bool(args.perception_debug_console),
         session_note=(
             f"camera={args.camera} vision={args.vision} behavior={args.behavior} "
             f"emotion={args.emotion_backend}"
         ),
     )
+    if not args.no_log_file:
+        output.show_text(f"[日志] 主进程：{args.log_file}")
     if args.perception_debug:
         output.show_text(
             f"[感知调试] 行为/情绪/疲劳日志：{args.perception_debug_dir}/perception.log"
@@ -656,6 +734,18 @@ def main() -> None:
 
     screen_adapter = None
     pet_preview_server = None
+    _vision_stats_holder: dict[str, object] = {"adapter": None}
+
+    def _query_pet_stats() -> dict[str, dict[str, int]]:
+        adapter = _vision_stats_holder.get("adapter")
+        if adapter is None:
+            return {}
+        now = int(time.time())
+        try:
+            return adapter.query_state_seconds(start_ts=now - 600, end_ts=now)
+        except Exception:
+            return {}
+
     if getattr(args, "screen_preview", False):
         from src.adapters.screen.headless_pet_display import HeadlessPetDisplay
         from src.adapters.screen.pet_preview_server import PetPreviewServer
@@ -668,6 +758,7 @@ def main() -> None:
         screen_adapter = ScreenDisplayAdapter(
             hardware=headless,
             console_output=output,
+            stats_provider=_query_pet_stats,
         )
         output = screen_adapter
         output.show_text(
@@ -690,6 +781,7 @@ def main() -> None:
             screen_adapter = ScreenDisplayAdapter(
                 hardware=screen_window,
                 console_output=output,
+                stats_provider=_query_pet_stats,
             )
             output = screen_adapter
         except Exception as exc:
@@ -698,7 +790,12 @@ def main() -> None:
                 " VNC 终端请确认 export DISPLAY=:1，或加 --no-screen。"
             )
 
-    # NPU OM 须在语音 start 之前、且须在 MediaPipe 大量初始化之前完成 load；
+    # 关键顺序修复：MediaPipe(TensorFlow) 必须在 Ascend ACL OM 之前完成加载。
+    # 在本板上，若先 load acl OM（占用 NPU 设备上下文）再 import mediapipe，
+    # TF 的 .so 二次注册 collective 会 Abort(core dumped)。因此先在主线程把
+    # MediaPipe FaceMesh 初始化好（让 TF 先注册），再做 OM 预载。
+    _warmup_vision_runtime_main_thread(args, output)
+
     # 桌宠 pygame 须先于 OM 预加载，否则 SDL 视频子系统 init 会失败。
     behavior_detector = _preload_npu_perception_models(
         args,
@@ -715,24 +812,20 @@ def main() -> None:
             build_tts_backend,
             build_wake_word_detector,
         )
-        from src.adapters.voice.alsa_audio_devices import (
+        from src.adapters.voice.input.alsa_audio_devices import (
             list_capture_devices,
             list_playback_devices,
             resolve_voice_pipeline_devices,
         )
 
-        capture_alsa, playback_alsa = resolve_voice_pipeline_devices(
+        from src.adapters.voice.input.alsa_audio_devices import describe_device
+
+        capture_alsa, wake_alsa, playback_alsa = resolve_voice_pipeline_devices(
             capture_explicit=args.voice_alsa_device,
+            wake_explicit=args.wake_alsa_device,
             playback_explicit=args.tts_alsa_device,
             split_input_output=True,
         )
-        from src.adapters.voice.alsa_audio_devices import resolve_capture_device
-
-        wake_raw = (args.wake_alsa_device or "auto").strip().lower()
-        if wake_raw in {"", "auto", "same", "default"}:
-            wake_alsa = capture_alsa
-        else:
-            wake_alsa = resolve_capture_device(explicit=args.wake_alsa_device)
 
         recognizer = BaiduShortASRBackend(sample_rate=args.voice_sample_rate)
         tts_backend = build_tts_backend(
@@ -756,7 +849,7 @@ def main() -> None:
                 sensitivities = [0.5]
 
             if args.wake_backend in {"sherpa-onnx", "sherpa", "kws", "sherpa_onnx"}:
-                from src.adapters.voice.sherpa_kws import ensure_keywords_file
+                from src.adapters.voice.wake.sherpa_kws import ensure_keywords_file
 
                 keywords_file = ensure_keywords_file(
                     model_dir=args.sherpa_kws_dir,
@@ -807,46 +900,41 @@ def main() -> None:
             tts_backend=tts_backend,
             alsa_device=capture_alsa,
             wake_alsa_device=wake_alsa,
-            persistent_capture=not args.no_persistent_capture,
-            wake_echo_trim=args.wake_echo_trim,
             sample_rate=args.voice_sample_rate,
-            capture_duration_sec=args.voice_duration,
-            post_wake_capture_sec=args.post_wake_duration,
-            post_ack_listen_delay_sec=args.post_ack_delay,
             post_ack_user_window_sec=args.post_ack_user_window,
-            capture_mode=args.capture_mode,
             max_capture_duration_sec=args.max_capture_duration,
             silence_duration_sec=args.silence_duration,
-            cloud_streaming=not args.no_cloud_streaming,
-            keep_voice_recordings=args.keep_voice_recordings,
-            playback_recording=args.playback_recording,
-            voice_record_dir=args.voice_record_dir,
-            wake_record_timing=args.wake_record_timing,
             wake_ack_text=args.wake_ack,
             wake_ack_mode=args.wake_ack_mode,
             wake_ack_dir=args.wake_ack_dir,
             voice_debug_dir=args.voice_debug_dir,
             voice_debug_log=not args.no_voice_debug_log,
+            voice_debug_console=True,
         )
         voice_adapter.debug = bool(args.voice_debug)
         if not args.no_voice_debug_log:
             output.show_text(f"[语音调试] 日志：{args.voice_debug_dir}/latest/voice.log（每次唤醒覆盖）")
         output = MultiOutput(output, voice_adapter)
 
-    from src.agent.config.policy_config import DecisionPolicyConfig
-
-    core = build_default_core(
-        output=output,
-        decision_policy=DecisionPolicyConfig(llm_mode=args.llm_mode),
-    )
+    core = build_default_core(output=output)
     core.start_autonomous_scheduler()
 
     if voice_adapter is not None:
         voice_adapter._sink = core
-        output.show_text(
-            f"[音频] 唤醒监听：{wake_alsa}  |  用户录音：{capture_alsa}  |  "
-            f"扬声器：{playback_alsa or 'auto'}"
+        core.device_adapter.voice_runtime = voice_adapter._runtime
+        core.media_controller.configure_playback(
+            alsa_playback_device=playback_alsa,
+            prefer_capture_device=capture_alsa,
         )
+        output.show_text(
+            f"[音频] 唤醒监听：{describe_device(wake_alsa)}  |  "
+            f"用户录音：{describe_device(capture_alsa)}  |  "
+            f"扬声器：{describe_device(playback_alsa)}"
+        )
+        if playback_alsa is None:
+            output.show_text("[Warn] 未检测到可播放设备，TTS/唤醒应答将无声")
+        elif wake_alsa != capture_alsa:
+            output.show_text("[音频] 已启用双麦：盒子听唤醒，摄像头录用户话")
 
         import platform
         output.show_text(f"[诊断] 操作系统：{platform.system()}，Python 版本：{platform.python_version()}")
@@ -859,15 +947,73 @@ def main() -> None:
             f"[诊断] TTS 配置：{'已配置' if tts_configured else '未配置'}"
             f"（backend={args.tts_backend}）"
         )
-    # 设置事件处理回调，自动更新屏幕
+    # 设置事件处理回调，自动更新屏幕（表情 + 传感器 + 统计 + 语音字幕）
     if screen_adapter is not None:
-        def on_event_handled(state):
-            if state.focus.active:
-                screen_adapter.update_focus_timer(
-                    state.focus.remaining_sec,
-                    state.focus.target_duration_sec
-                )
-        core.set_event_handled_callback(on_event_handled)
+        _orig_handle_event = core.handle_event
+
+        def _handle_event_with_screen(event):
+            screen_adapter.feed_event(event)
+            return _orig_handle_event(event)
+
+        core.handle_event = _handle_event_with_screen  # type: ignore[method-assign]
+
+        def _sync_pet_visual(state, *, force: bool = False) -> None:
+            env = state.environment
+            user = state.user
+            screen_adapter.sync_visual_state(
+                dialogue_state=state.interaction.dialogue_state,
+                focus_active=state.focus.active,
+                focus_remaining=state.focus.remaining_sec,
+                focus_duration=state.focus.target_duration_sec,
+                temperature_c=env.temperature_c,
+                humidity_pct=env.humidity_pct,
+                light_lux=env.light_lux,
+                noise_db=env.noise_db,
+                temperature_level=str(env.temperature_level or ""),
+                humidity_level=str(env.humidity_level or ""),
+                light_level=str(env.light_level or ""),
+                noise_level=str(env.noise_level or ""),
+                emotion=str(user.emotion or "neutral"),
+                fatigue=str(user.fatigue_level or "none"),
+                emotion_confidence=user.emotion_confidence,
+                fatigue_confidence=user.fatigue_confidence,
+                force=force,
+            )
+
+        core.set_event_handled_callback(lambda state: _sync_pet_visual(state))
+        _sync_pet_visual(core._snapshot_state(), force=True)
+
+        # 计时器每秒直接刷新屏幕，避免被 LLM/语音事件阻塞导致倒计时冻住。
+        _agent_timer_tick = core._on_timer_tick
+
+        def _screen_timer_tick(remaining_sec: int) -> None:
+            snap = core._snapshot_state()
+            env = snap.environment
+            user = snap.user
+            screen_adapter.sync_visual_state(
+                dialogue_state=snap.interaction.dialogue_state,
+                focus_active=snap.focus.active,
+                focus_remaining=remaining_sec if snap.focus.active else snap.focus.remaining_sec,
+                focus_duration=snap.focus.target_duration_sec,
+                temperature_c=env.temperature_c,
+                humidity_pct=env.humidity_pct,
+                light_lux=env.light_lux,
+                noise_db=env.noise_db,
+                temperature_level=str(env.temperature_level or ""),
+                humidity_level=str(env.humidity_level or ""),
+                light_level=str(env.light_level or ""),
+                noise_level=str(env.noise_level or ""),
+                emotion=str(user.emotion or "neutral"),
+                fatigue=str(user.fatigue_level or "none"),
+                emotion_confidence=user.emotion_confidence,
+                fatigue_confidence=user.fatigue_confidence,
+            )
+            _agent_timer_tick(remaining_sec)
+
+        core.device_adapter.timer_callback = _screen_timer_tick
+
+        # 专注计时在冷启动时由 session_bootstrap 清空，不再恢复上次未结束的会话。
+        _sync_pet_visual(core._snapshot_state(), force=True)
 
     vision_adapter = None
     behavior_adapter = None
@@ -885,7 +1031,9 @@ def main() -> None:
             vision_emotion_backend_ready,
         )
 
-        if vision_dependencies_met():
+        # 注意：vision_dependencies_met() 会在主线程真正 import mediapipe，
+        # 提前完成 TF 计算图初始化，避免后台采集线程首次加载与 acl OM 冲突崩溃。
+        if args.vision and vision_dependencies_met():
             from src.adapters.perception_config import (
                 emotion_every_n_frames,
                 perception_hz,
@@ -905,6 +1053,7 @@ def main() -> None:
                 state_stats_db_path=state_stats_db or "data/runtime/state_stats.db",
             )
             vision_adapter = VisionAffectInputAdapter(core, cfg, frame_bus=shared_frame_bus)
+            _vision_stats_holder["adapter"] = vision_adapter
             vision_adapter.start_background()
             em_ok = vision_emotion_backend_ready(cfg)
             raf_h = f" 情绪：RAF+权重。" if (emotion_be.lower() in {"raf", "raf-db"} and raf_path) else ""
@@ -1034,7 +1183,7 @@ def main() -> None:
             voice_adapter.start()
             output.show_text(
                 f"已启动唤醒词监听（{args.wake_backend}，词：{args.wake_word}）；"
-                f"{'摄像头麦常驻+唤醒即录' if not args.no_persistent_capture else '唤醒即录'}，"
+                "双麦/单麦（AudioInputManager）+ KWS feed + VAD，"
                 f"VAD 说完停（静音 {args.silence_duration}s），"
                 f"本地应答（{args.wake_ack_mode}），识别后再走 LLM。"
             )
@@ -1046,7 +1195,7 @@ def main() -> None:
             if event is None:
                 output.show_text("[Voice] 未识别到有效文本。")
             else:
-                core.handle_event_with_results(event)
+                core.handle_event(event)
                 output.show_text(f"[Voice] 已上报事件：{event.payload}")
 
     output.show_text("Agent MVP 已启动，输入 /help 查看可用命令。")
@@ -1055,6 +1204,16 @@ def main() -> None:
         if args.playback_recording or args.keep_voice_recordings:
             hints.append("/voice_replay")
         output.show_text("语音命令：" + " ".join(hints))
+    wake_hint = ""
+    if voice_adapter is not None and detector is not None:
+        wake_hint = f"对着摄像头说「{args.wake_word}」唤醒，或"
+    log_note = args.log_file if not args.no_log_file else "终端"
+    print(
+        f"\n[Main] Agent 已就绪。{wake_hint}输入 /help 查看命令。"
+        f"（日志：{log_note}；关键语音/Agent 输出见终端 [Voice]/[Agent]）",
+        file=sys.stderr,
+        flush=True,
+    )
     try:
         while True:
             line = cli.readline()
@@ -1083,7 +1242,7 @@ def main() -> None:
                 if event is None:
                     output.show_text("[Voice] 未识别到有效文本。")
                 else:
-                    core.handle_event_with_results(event)
+                    core.handle_event(event)
                     output.show_text(f"[Voice] 已上报事件：{event.payload}")
                 continue
             if voice_adapter is not None and command == "/voice_replay":
@@ -1104,7 +1263,11 @@ def main() -> None:
                 core.handle_event(mock_event)
                 continue
 
-            core.handle_event(parse_cli_event(command))
+            cli_event = parse_cli_event(command)
+            if cli_event is not None:
+                core.handle_event(cli_event)
+            else:
+                output.show_text("[Error] 未识别的命令。输入 /help 查看可用命令。")
     finally:
         if voice_adapter is not None:
             voice_adapter.stop_background_loop()
@@ -1119,6 +1282,7 @@ def main() -> None:
             screen_adapter._hardware.stop()
         core.shutdown()
         output.show_text("Agent MVP 已退出。")
+        output.close()
 
 
 if __name__ == "__main__":

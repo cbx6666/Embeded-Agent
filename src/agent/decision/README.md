@@ -2,40 +2,40 @@
 
 ## 职责
 
-`decision/` 是 Rule/LLM 输出到设备动作之间的确定性边界。
+`decision/` 包含多个决策处理器，按 `EventRouter` 分流结果分别处理：
 
-`IntentPlan -> DecisionPostProcessor -> IntentPlanValidator -> DeterministicGuard -> ActionRealizer -> Action`
+| 处理器 | 分流 | LLM | 输出 |
+|--------|------|-----|------|
+| `SpeechLLMHandler` | `speech_llm` | `speech_recognized` | Intent + Action |
+| `BehaviorDistractionHandler` | `behavior_distraction` | `behavior_distraction_check` | 提醒文案（经 Guard） |
+| `WellnessCareHandler` | `wellness_care` | `wellness_care_check` | 疲劳/情绪/姿态关怀（经 Guard） |
+| `EnvironmentCareHandler` | `environment_care` | `environment_care_check` | 环境关怀（经 Guard） |
+| `SensorStatusHandler` | `sensor_status` | 无（确定性播报） | speak/display 或 no_op |
+| `RuleHandler` | `rule` | 无 | Intent + Action |
 
-## 不负责什么
-
-本目录不做关键词语义理解，不直接读取 store，不维护旧式规划/候选/仲裁/处理器链路，不直接执行硬件。
+链路：`Handler.decide() -> Intent -> ActionRealizer.realize() -> Action[]`
 
 ## 核心文件
 
-- `intent_model.py`：注册 intent 类型、AgentIntent 和 IntentPlan。
-- `rule_intent_builder.py`：P0B 结构化事件的 0 LLM 计划构造。
-- `autonomous_check_policy.py`：P1 的状态、趋势、source 和 cooldown 前置门控。
-- `decision_post_processor.py`：Rule/LLM 共用的后处理链。
-- `validator.py`：拒绝未注册 intent、action 字段和 state_patch。
-- `guard.py`：执行 presence safety、cooldown、高风险阻断等硬边界。
-- `action_realizer.py`：把批准的 IntentPlan 转成注册 Action。
-- `decision_pipeline.py`：串联 Rule/LLM 计划来源与确定性边界。
+- `speech_llm_handler.py`：`answer_user / start_focus / stop_focus / set_tts_volume / no_op`
+- `behavior_distraction_handler.py`：玩手机分心 Python 预检 + LLM 措辞 + Guard
+- `wellness_care_handler.py`：`build_wellness_care_summary` + LLM + Guard
+- `environment_care_handler.py`：`build_environment_care_summary` + LLM + Guard
+- `sensor_status_handler.py`：传感器数值播报，确定性边界（away/speaking/刚说过话），不调 LLM
+- `rule_handler.py`：专注与计时器规则
 
 ## 上游和下游
 
-上游是 `AgentCore` 传入的 `Event`、`AgentState`、`PersonalContext` 和 `LLMService`。内部由 `llm_agent/` 输出 `AgentRun`。下游是 `execution/device_adapter.py` 执行的 Action。
-
-## 扩展方式
-
-新增 intent：先加入 `REGISTERED_INTENT_TYPES`，再在 `ActionRealizer` 中实现动作落地，并补 validator/guard 测试。
+- 上游：`AgentCore` 传入 `Event`、`AgentState`、`LLMClient`、`user_context`（各 LLM 入口）
+- 下游：`action/realizer.py` → `device/adapter.py`
 
 ## 示例
 
 ```python
-result = pipeline.decide(
-    previous_state=previous,
-    current_state=state,
+result = speech_handler.decide(
+    state=state,
     event=event,
-    llm_service=llm,
+    llm_client=llm_client,
+    user_context={"memories": {...}, "profile": {...}},
 )
 ```

@@ -47,23 +47,28 @@ class LLMService:
         ).rstrip("/")
         self.model = model or env_values.get("DEEPSEEK_MODEL") or os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat"
         self.timeout_sec = float(timeout_sec)
-        self.voice_stream_sink: object | None = None
         self._is_configured()
 
-    def complete_json(self, role: str, prompt: str) -> str:
-        """为指定 LLM 角色生成 JSON 字符串；失败时抛错，由上层边界处理。"""
+    def complete_json(self, role: str, prompt: str, *, temperature: float = 0.1) -> str:
+        """为指定 LLM 角色生成 JSON 字符串；失败时抛错，由上层边界处理。
+
+        ``temperature`` 默认 0.1（记忆抽取等需要稳定 JSON 的场景）；面向用户的提醒 /
+        问答类决策可传入更高温度（如 0.85），让 ``reply`` 文案更自然多变、不重复。
+        """
 
         messages = [
             {
                 "role": "system",
                 "content": (
                     f"You are {role} in an embedded LLM-centered agent. "
-                    "Return exactly one JSON object. Do not include markdown."
+                    "Return exactly one JSON object. Do not include markdown. "
+                    "When you write a user-facing reply, vary the wording naturally "
+                    "and avoid repeating previous phrasings."
                 ),
             },
             {"role": "user", "content": prompt},
         ]
-        return self.chat_completion(messages, temperature=0.1)
+        return self.chat_completion(messages, temperature=float(temperature))
 
     def generate_reply(self, text: str, state: object | None = None) -> str:
         """生成用户可见文本；只调用 DeepSeek，不做本地回复 fallback。"""

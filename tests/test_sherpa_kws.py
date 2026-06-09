@@ -4,7 +4,7 @@ import struct
 import unittest
 from pathlib import Path
 
-from src.adapters.voice.sherpa_kws import (
+from src.adapters.voice.wake.sherpa_kws import (
     build_keywords_file,
     ensure_keywords_file,
     resolve_sherpa_kws_dir,
@@ -41,7 +41,7 @@ class SherpaKwsSetupTestCase(unittest.TestCase):
 
     def test_sherpa_detector_silent_audio(self) -> None:
         try:
-            from src.adapters.voice.wake_word_detector import SherpaOnnxWakeWordDetector
+            from src.adapters.voice.wake.detector import SherpaOnnxWakeWordDetector
         except ImportError:
             self.skipTest("sherpa-onnx not installed")
 

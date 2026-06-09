@@ -15,14 +15,15 @@ from src.adapters.environment.parser import (
     parse_environment_sensor_line,
     parse_esp32_sensor_line,
 )
-from src.agent.config.policy_config import DecisionPolicyConfig
 from src.agent.event.event_builders import (
     make_light_level_event,
     make_noise_level_event,
     make_temperature_humidity_event,
 )
-from src.agent.reducer import reduce_state
+from src.agent.event.event_model import Event
+from src.agent.event.router import EventRouter
 from src.agent.state import AgentState
+from src.agent.state.reducer import reduce_state
 
 
 class Esp32ParseTest(unittest.TestCase):
@@ -138,15 +139,17 @@ class Esp32ReducerTest(unittest.TestCase):
         self.assertEqual(state.environment.noise_db, 50)
 
 
-class EnvironmentDecisionPolicyTest(unittest.TestCase):
-    def test_environment_events_skip_llm(self) -> None:
-        policy = DecisionPolicyConfig()
+class EnvironmentRoutingTest(unittest.TestCase):
+    def test_environment_events_route_state_only(self) -> None:
+        router = EventRouter()
         for event_type in (
             "light_level_updated",
             "temperature_humidity_updated",
             "noise_level_updated",
         ):
-            self.assertIn(event_type, policy.llm_skipped_event_types)
+            decision = router.classify(Event(type=event_type, timestamp=0, payload={}))
+            self.assertEqual(decision.kind, "state_only")
+            self.assertFalse(decision.uses_llm)
 
 
 if __name__ == "__main__":

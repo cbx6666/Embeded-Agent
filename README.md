@@ -1,34 +1,28 @@
 # Embeded-Agent
 
-Embeded-Agent 是一个面向嵌入式交互场景的 LLM-centered Agent Runtime Prototype。当前实现把 LLM 放在语义认知层，把 Python 放在 deterministic runtime boundary：LLM 负责理解、规划、审查、表达和长期记忆候选；runtime 负责 state、validator、guard、store、action、trace 和 replay。
+Embeded-Agent 是一个面向嵌入式交互场景的 Agent Runtime。LLM 在固定入口参与语义决策（`speech_recognized`、自主检查 `behavior_distraction_check` / `wellness_care_check` / `environment_care_check` 等）；Python runtime 负责事件归约、状态维护、分流、Guard、动作落地与设备执行。
 
 ## 核心链路
 
 ```text
 Event
--> Reducer
+-> reduce_state
 -> RuntimeHistoryService
--> LongTermMemoryPipeline
--> PersonalContextBuilder
--> AgentContextBuilder
--> LLMAgentOrchestrator
--> IntentPlanValidator
--> DeterministicGuard
+-> EventRouter
+-> speech_llm | behavior_distraction | wellness_care | environment_care | sensor_status | rule | state_only
 -> ActionRealizer
 -> DeviceAdapter
 -> ActionResult
--> RuntimeTrace
 ```
 
 ## 核心能力
 
-- 统一建模 `Event / State / RuntimeHistory / LongTermMemory / PersonalContext / Intent / Action`。
-- 四角色 LLM Agent：`SituationAnalyst`、`IntentPlanner`、`SafetyCritic`、`ResponseWriter`。
-- 长期记忆管线：observe、extract、critic、consolidate、validate、store。
-- Deterministic boundary：schema validation、registered intent、presence/cooldown guard、action realization、device adapter。
-- 个性化上下文：显式 `UserProfile`、证据化 `LongTermMemory` 和短期 `RuntimeHistory` 收口到 `PersonalContext`。
-- 可观测性：轻量 `RuntimeTrace` 支持 debug print、JSON dump 和测试断言。
-- 长时间运行验证：`tests/scenarios/`、`tests/replay/` 和 `scripts/runtime_experiments/`。
+- 统一建模 `Event`（20 种）/ `State` / `RuntimeHistory` / `Intent` / `Action`（5 种）。
+- 多路 LLM 入口：用户语音单次理解、分心/疲劳/环境等自主检查（20s/30s/60s 周期）。
+- 异步偏好记忆：`MemoryService` 从语音提取偏好，供 LLM prompt 检索。
+- 确定性边界：Guard（防刷屏/不在场/TTS 中）、动作闭集、DeviceAdapter 不支持则明确失败。
+- 显式 `UserProfile` + 短期 `RuntimeHistory` + 偏好记忆合并进 prompt。
+- 硬件联调：adapters 只产生注册 Event、只执行注册 Action。
 
 ## 项目结构
 
@@ -41,27 +35,29 @@ src/
   storage/
 
 tests/
-  scenarios/
-  replay/
+  test_agent_refactor.py
+  fakes/
 
 scripts/
-  runtime_experiments/
   debug/
 
 docs/
   design/
   integration/
   requirements/
+  testing/
   shared/
 ```
 
 ## 文档入口
 
-- `docs/design/src_architecture_design.md`：当前 `src/` 架构设计文档。
+- `src/agent/README.md`：当前 Agent 内核架构（权威）。
+- `docs/testing/agent_functional_test_guide.md`：**Agent 功能深入测试流程**（画像、记忆、多元回答、全 Handler）。
+- `docs/archive/src_architecture_design.md`：历史架构文档（已归档，非当前运行架构）。
 - `docs/design/storage_layout.md`：本地 `data/` 目录的数据域布局说明。
 - `docs/requirements/agent_requirements.md`：Agent 需求与目标说明。
 - `docs/integration/`：行为、显示、环境、语音、情绪等适配说明。
-- `src/agent/README.md`：Agent 内核目录说明。
+- `docs/commands.txt`：CLI / mock / profile 命令速查。
 
 ## LLM 配置
 
@@ -76,9 +72,7 @@ DEEPSEEK_MODEL=deepseek-chat
 - **`deepseek-chat`**（默认）：回复快，适合语音交互。
 - **`deepseek-reasoner`**：推理链更长，单轮常慢数倍，不建议用于唤醒对话。
 
-默认 **`--llm-mode fast`**：对语音识别/文本输入只调 **1 次** LLM（约 2～5s），把四角色的关键输入（当前状态、最近对话、用户偏好、结构化 JSON）压缩进一次 `fast_dialogue` 请求；需要完整规划与安全审查时用 `--llm-mode full`。
-
-未配置 API 时，生产链路会抛出配置错误。测试和实验通过显式 fake/double 提供 deterministic LLM 行为，不由 `LLMService` 内置 mock。
+语音与各自主检查各走 **1 次** LLM（独立 prompt），无四角色串行。`sensor_status_report` 为确定性数值播报，不调 LLM。未配置 API 时生产链路抛出配置错误；测试通过 `tests/fakes/fake_llm_service.py` 注入确定性行为。
 
 ## 固定唤醒词（Sherpa-ONNX，无需 Picovoice 注册）
 
@@ -118,7 +112,7 @@ python -m src.main --wake-backend energy           # 回退到音量触发（非
 | 唤醒「小助」 | **本地** Sherpa KWS | 无网络 |
 | 即时应答「我在，请说。」 | **本地** 预加载 WAV | 与录音**并行**播放，不阻塞开麦 |
 | 用户说话 → 文本 | **云端** 百度 ASR | **默认唤醒即录**（`sync`），可连着唤醒词说话；VAD 说完停录 |
-| 理解 + 生成回复 | **云端** DeepSeek（`deepseek-chat` + `--llm-mode fast`） | 默认 **LLM SSE 流式** + **逐句百度 TTS**（首句更快出声） |
+| 理解 + 生成回复 | **云端** DeepSeek（`deepseek-chat`，单次 `speech_recognized` LLM） | 默认 **LLM SSE 流式** + **逐句百度 TTS**（首句更快出声） |
 | Agent 语音播报 | **云端** 百度 TTS（默认） | `--tts-backend sherpa-onnx` 可改板端离线 |
 
 仍想用 Sherpa 离线合成 Agent 回复时：
@@ -130,35 +124,27 @@ python -m src.main --tts-backend sherpa-onnx
 
 百度 TTS 为默认，需在 `.env` 配置 `BAIDU_TTS_*`（与 ASR 可共用密钥）。
 
-语音采集与流式（默认已开）：
+语音采集（`AudioInputManager` 单路 capture + VAD tap）：
 
 ```bash
-# 默认：唤醒词命中立即开录，应答并行；VAD 说完停录
-python -m src.main --capture-mode vad --silence-duration 0.8
-
-# 旧行为：等应答播完再录
-python -m src.main --wake-record-timing after_ack --post-ack-delay 0.5
-
-# 固定时长录音（旧行为）
-python -m src.main --capture-mode fixed --post-wake-duration 6
-
-# 关闭 LLM 流式 + 逐句 TTS
-python -m src.main --no-cloud-streaming
+# VAD 说完停录（默认静音 0.8s）
+python -m src.main --silence-duration 0.8 --max-capture-duration 15
 ```
 
-说明：百度短 ASR 仍是「录完后整段上传」，VAD 缩短等待；TTS 按句合成，在 LLM 还在生成后续内容时可先播第一句。
+说明：唤醒应答、Agent 回复、自主提醒均经 `TTSPlaybackManager` 统一排队播放；百度短 ASR 为录完后整段上传。
 
-**录放分离（默认）**：麦克风走摄像头/USB（`--voice-alsa-device auto`），TTS/应答走独立扬声器（默认 `--tts-alsa-device plughw:1,0`）。查看本机设备：
+**音频路由（默认按设备名称，不依赖 card 编号）**：盒子(UAC)听唤醒词并播报，摄像头(C920)录用户话。USB 插拔或重启后 card 编号可能变化，系统按名称自动匹配。查看本机解析结果：
 
 ```bash
 python -m src.main --list-audio-devices
 ```
 
-若自动识别不对，可在 `.env` 或命令行显式指定：
+若自动识别不对，可用别名或显式指定（推荐别名，避免 card 编号变化）：
 
 ```bash
-export EMBED_VOICE_CAPTURE_ALSA_DEVICE=plughw:0,0   # 摄像头麦
-export EMBED_TTS_ALSA_DEVICE=plughw:1,0             # 板载扬声器，不参与录音
+export EMBED_VOICE_CAPTURE_ALSA_DEVICE=camera   # 用户说话：摄像头麦
+export EMBED_WAKE_CAPTURE_ALSA_DEVICE=box       # 唤醒词：盒子麦
+export EMBED_TTS_ALSA_DEVICE=speaker            # 播报：盒子扬声器
 python -m src.main
 ```
 
@@ -229,26 +215,11 @@ python -m src.main --llm --pose --pose-device npu --pose-model yolov8n-pose.pt
 python -m pytest -q
 ```
 
-## 运行实验
-
-```bash
-python scripts/runtime_experiments/study_session_experiment.py
-python scripts/runtime_experiments/long_term_memory_experiment.py
-python scripts/runtime_experiments/multi_user_isolation_experiment.py
-python scripts/runtime_experiments/hallucination_resistance_experiment.py
-python scripts/runtime_experiments/retrieval_quality_experiment.py
-```
-
-实验输出默认写入：
-
-- runtime experiments：`data/experiments/runtime/`
-- retrieval experiment：`data/experiments/retrieval/`
+深入功能验收（用户画像、记忆检索、个性化多元回答、自主关怀、媒体等）见
+[`docs/testing/agent_functional_test_guide.md`](docs/testing/agent_functional_test_guide.md)。
 
 ## Debug CLI
 
 ```bash
-python scripts/debug/inspect_memory.py --memory data/memory/long_term_memory.json
-python scripts/debug/inspect_personal_context.py --user default --text "gentle reminder"
-python scripts/debug/inspect_trace.py data/experiments/runtime/study_session_experiment/trace_logs.json
-python scripts/debug/replay_events.py data/experiments/runtime/study_session_experiment/events.json
+python scripts/debug/inspect_memory.py --memory data/memory/user_memory.json
 ```

@@ -45,6 +45,9 @@ class PhoneHandCameraAdapter:
         self.frame_bus = frame_bus
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_behavior_sig: tuple[Any, ...] | None = None
+        self._last_stable_phone_ts: float = 0.0
+        self._working_publish_grace_sec: float = 4.0
 
     def start_background(self) -> None:
         if not dependencies_met():
@@ -120,13 +123,28 @@ class PhoneHandCameraAdapter:
                     head_down_assist=result.head_down_assist,
                     raw_phone_count=result.raw_phone_count,
                     person_count_pose=result.person_count_pose,
+                    face_detected=result.face_detected,
+                    phone_signal=result.phone_signal,
                 )
-                if result.person_visible:
-                    self.behavior.publish_presence("present", confidence=0.9, source=self.source)
+                self._log_behavior_to_console(result)
+                # 玩手机优先于 pose 的 left/away：举机时人体常被遮挡，pose OM 漏检不能盖掉 phone_use。
+                phone_signal = str(result.phone_signal)
+                has_phone_evidence = (
+                    result.raw_phone_count > 0
+                    or phone_signal in {"phone", "phone_wrist", "phone_face", "sustained"}
+                )
+                if result.phone_in_hand and has_phone_evidence:
+                    self.behavior.publish_presence("present", confidence=0.85, source=self.source)
+                    self._last_stable_phone_ts = now
+                    self.behavior.publish_attention(
+                        attention="distracted",
+                        behavior="phone_use",
+                        confidence=max(float(result.confidence), 0.85),
+                        source=self.source,
+                        yolo_phone_detected=result.raw_phone_count > 0,
+                    )
                 elif result.presence_phase == "left":
                     self.behavior.publish_presence("away", confidence=0.9, source=self.source)
-
-                if result.presence_phase == "left":
                     self.behavior.publish_attention(
                         attention="idle",
                         behavior="away",
@@ -143,19 +161,16 @@ class PhoneHandCameraAdapter:
                         confidence=0.9,
                         source=self.pose_source,
                     )
-                elif result.phone_in_hand:
-                    self.behavior.publish_attention(
-                        attention="distracted",
-                        behavior="phone_use",
-                        confidence=result.confidence,
-                        source=self.source,
-                    )
-                else:
+                elif result.person_visible:
+                    self.behavior.publish_presence("present", confidence=0.9, source=self.source)
+                elif (now - self._last_stable_phone_ts) >= self._working_publish_grace_sec:
+                    # 短暂掉检不立刻刷成 working，避免稀释 30s 窗口里的 phone_use 占比。
                     self.behavior.publish_attention(
                         attention="focused",
                         behavior="working",
                         confidence=0.9,
                         source=self.source,
+                        yolo_phone_detected=False,
                     )
                 if result.posture != "unknown":
                     pose_conf = max(float(result.posture_confidence), 0.85)
@@ -174,3 +189,24 @@ class PhoneHandCameraAdapter:
         finally:
             if own_cap is not None:
                 own_cap.release()
+
+    def _log_behavior_to_console(self, result: Any) -> None:
+        """行为检测变化时打印到控制台（仅在关键状态变化时打印，避免 4Hz 刷屏）。"""
+
+        sig = (
+            bool(result.phone_in_hand),
+            str(result.presence_phase),
+            str(result.activity),
+            str(result.posture),
+        )
+        if sig == self._last_behavior_sig:
+            return
+        self._last_behavior_sig = sig
+        phone = "玩手机" if result.phone_in_hand else "无手机"
+        signal = str(getattr(result, "phone_signal", "none"))
+        print(
+            f"[行为] {phone}｜依据={signal}｜在位={result.presence_phase}｜"
+            f"人脸={getattr(result, 'face_detected', False)}｜"
+            f"raw_phone={result.raw_phone_count}｜conf={float(result.confidence):.2f}",
+            flush=True,
+        )

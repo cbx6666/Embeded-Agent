@@ -4,13 +4,13 @@
 
 当前职责：
 
-- `runtime_history_service.py`：维护 `RuntimeHistory` 的短期窗口和滚动统计。
 - `user_profile_service.py`：管理显式 `UserProfile` 的业务入口。
+- `user_profile_model.py`：`UserInfo` / `UserPreference` / `UserProfile` 显式画像数据模型。
 - `llm_service.py`：DeepSeek Chat Completions 调用适配；生产链路不内置本地 mock。
 - `timer_service.py`：计时器能力适配。
 
-领域语义仍在 `src/agent/`：`RuntimeHistory`、`LongTermMemory`、`UserProfile` 和
-`PersonalContext` 的模型与管线不在 services 中定义。
+记忆与短期历史已收敛到 `src/agent/`：
 
-当前没有独立的 `MemoryService`：短期历史由 `RuntimeHistoryService` 维护，长期记忆由
-`agent/memory/LongTermMemoryPipeline` 与 `storage/LongTermMemoryStore` 负责。
+- 短期窗口由 `agent/state/runtime_history.py` 的 `RuntimeHistoryService` 维护。
+- 异步偏好记忆由 `agent/memory/memory_service.py` 的 `MemoryService` 负责
+  （JSON 落地，服务两个 LLM 入口）。

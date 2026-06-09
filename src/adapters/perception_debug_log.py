@@ -20,7 +20,7 @@ class PerceptionDebugLog:
         *,
         log_dir: str | Path = DEFAULT_PERCEPTION_DEBUG_DIR,
         enabled: bool = False,
-        console: bool = True,
+        console: bool = False,
     ) -> None:
         self.enabled = bool(enabled)
         self.console = bool(console)
@@ -62,8 +62,14 @@ class PerceptionDebugLog:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             with self.log_path.open("a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
-        if self.console:
-            print(f"[PerceptionDebug] {line}", flush=True)
+        if self.console or event in {
+            "detected",
+            "infer_failed",
+            "camera_open_failed",
+            "camera_opened",
+            "detector_ready",
+        }:
+            print(f"[Perception] {line}", flush=True)
 
 
 _manager: PerceptionDebugLog | None = None
@@ -73,7 +79,7 @@ def configure_perception_debug(
     *,
     enabled: bool,
     log_dir: str | Path = DEFAULT_PERCEPTION_DEBUG_DIR,
-    console: bool = True,
+    console: bool = False,
     session_note: str = "",
 ) -> PerceptionDebugLog:
     """配置进程内感知调试日志，并在启用时重置日志文件。"""

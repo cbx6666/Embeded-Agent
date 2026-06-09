@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-from src.adapters.voice.local_wake_ack import (  # noqa: E402
+from src.adapters.voice.wake.local_wake_ack import (  # noqa: E402
     DEFAULT_WAKE_ACK_DIR,
     DEFAULT_WAKE_ACK_PHRASES,
 )
@@ -55,7 +55,7 @@ def main() -> None:
 
 
 def _synthesize_baidu(text: str, wav_path: Path) -> None:
-    from src.adapters.voice.baidu_tts_backend import BaiduTTSBackend
+    from src.adapters.voice.tts.baidu_backend import BaiduTTSBackend
 
     backend = BaiduTTSBackend(output_path=wav_path)
     if not backend.is_configured():

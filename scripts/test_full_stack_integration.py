@@ -29,7 +29,7 @@ EXPECTED_EVENT_GROUPS: dict[str, list[str]] = {
     "视觉-情绪": ["user_emotion_updated"],
     "行为-在场/注意力": ["user_presence_updated", "user_attention_updated"],
     "姿势-姿态/活动": ["user_posture_updated", "user_activity_updated"],
-    "交互-mock": ["speech_recognized", "user_text_input"],
+    "交互-mock": ["speech_recognized"],
 }
 
 
@@ -98,12 +98,9 @@ def _inject_mock_interaction(sink: CollectingSink) -> None:
 
     now = int(time.time())
     sink.handle_event(
-        Event(type="user_text_input", timestamp=now, payload={"text": "全栈联调测试", "source": "integration_test"})
-    )
-    sink.handle_event(
         Event(
             type="speech_recognized",
-            timestamp=now + 1,
+            timestamp=now,
             payload={"text": "你好小助", "source": "integration_test", "confidence": 0.95},
         )
     )
@@ -126,7 +123,6 @@ def _print_coverage(stats: StackStats, *, emotion_enabled: bool, pose_from_behav
     if pose_from_behavior:
         add("姿势(pose OM)", "user_posture_updated", True)
         add("姿势(pose OM)", "user_activity_updated", True)
-    add("mock-文本", "user_text_input", True)
     add("mock-语音", "speech_recognized", True)
 
     for group, et, failed, note in checks:
@@ -357,7 +353,7 @@ def run_integration(args: argparse.Namespace) -> int:
 
     _print_coverage(stats, emotion_enabled=emotion_enabled, pose_from_behavior=True)
     _print_performance(stats, args.duration)
-    required = {"user_fatigue_updated", "user_attention_updated", "user_text_input", "speech_recognized"}
+    required = {"user_fatigue_updated", "user_attention_updated", "speech_recognized"}
     if emotion_enabled:
         required.add("user_emotion_updated")
     required |= {"user_posture_updated", "user_activity_updated"}

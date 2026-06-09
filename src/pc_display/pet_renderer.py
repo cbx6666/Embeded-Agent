@@ -18,6 +18,8 @@ from typing import Any, Optional
 
 import pygame
 
+from src.adapters.screen.cjk_font import get_font
+
 # ── layout constants ───────────────────────────────────────────
 
 PET_SIZE = 180  # base diameter
@@ -307,8 +309,8 @@ class PetRenderer:
                 pass
 
         try:
-            self._font = pygame.font.Font(None, BUBBLE_FONT_SIZE)
-            self._small_font = pygame.font.Font(None, BUBBLE_FONT_SIZE - 2)
+            self._font = get_font(BUBBLE_FONT_SIZE)
+            self._small_font = get_font(BUBBLE_FONT_SIZE - 2)
         except Exception:
             self._font = None
 
@@ -599,7 +601,7 @@ class PetRenderer:
         pet_top = int(cy + bob) - int(PET_SIZE * s / 2) - int(20 * s)
 
         text = self._bubble.text
-        font = self._font or pygame.font.Font(None, BUBBLE_FONT_SIZE)
+        font = self._font or get_font(BUBBLE_FONT_SIZE)
         lines = _wrap_text(text, font, BUBBLE_MAX_WIDTH - BUBBLE_PADDING * 2)
 
         line_h = font.get_height() + 3

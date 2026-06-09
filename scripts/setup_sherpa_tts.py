@@ -15,7 +15,7 @@ if __package__ in {None, ""}:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-from src.adapters.voice.sherpa_tts_backend import (  # noqa: E402
+from src.adapters.voice.tts.sherpa_backend import (  # noqa: E402
     DEFAULT_MODEL_URL,
     DEFAULT_SHERPA_TTS_DIR,
     resolve_sherpa_tts_dir,
@@ -48,7 +48,7 @@ def main() -> None:
 
     model_dir = download_model(Path(args.model_dir), args.model_url, args.force_download)
     print("测试合成一句：")
-    from src.adapters.voice.sherpa_tts_backend import SherpaOnnxTTSBackend
+    from src.adapters.voice.tts.sherpa_backend import SherpaOnnxTTSBackend
 
     backend = SherpaOnnxTTSBackend(model_dir=model_dir, output_path="data/tts_test.wav")
     backend.speak("本地语音合成测试。", voice=None, volume=None, speed=None)

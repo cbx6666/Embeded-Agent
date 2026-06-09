@@ -73,14 +73,17 @@ class BehaviorAdapter:
         confidence: float | None = None,
         source: str = "camera_v1",
         timestamp: int | None = None,
+        yolo_phone_detected: bool | None = None,
     ) -> bool:
         normalized_confidence = 1.0 if confidence is None else float(confidence)
         if normalized_confidence < self.min_confidence:
             return False
         now = time.time()
         attention_key = (attention, behavior)
+        # phone_use 上报更勤（0.8s），working 保持 2s 去抖，避免短暂掉检刷掉历史。
+        debounce = 0.8 if behavior == "phone_use" else self.debounce_seconds
         if self._last_attention_key == attention_key and self._last_attention_ts is not None:
-            if (now - self._last_attention_ts) < self.debounce_seconds:
+            if (now - self._last_attention_ts) < debounce:
                 return False
 
         event = make_behavior_attention_event(
@@ -89,6 +92,7 @@ class BehaviorAdapter:
             confidence=normalized_confidence,
             source=source,
             timestamp=timestamp,
+            yolo_phone_detected=yolo_phone_detected,
         )
         try:
             self.core.handle_event(event)

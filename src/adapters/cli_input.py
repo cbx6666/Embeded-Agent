@@ -1,4 +1,4 @@
-﻿"""命令行输入适配器模块。"""
+"""命令行输入适配器模块。"""
 
 from __future__ import annotations
 
@@ -86,8 +86,12 @@ class CLIInputAdapter:
 
 
 
-def parse_cli_event(command: str, timestamp: int | None = None) -> Event:
-    """将 CLI 文本翻译成标准事件。"""
+def parse_cli_event(command: str, timestamp: int | None = None) -> Event | None:
+    """将 CLI 文本翻译成结构化控制事件。
+
+    只识别开始/结束专注这类结构化控制指令；不再产生 user_text_input。
+    自然语言对话应通过语音链路（speech_recognized）进入。无法识别时返回 None。
+    """
     ts = timestamp or int(time.time())
     text = command.strip()
 
@@ -106,11 +110,7 @@ def parse_cli_event(command: str, timestamp: int | None = None) -> Event:
             payload={"source": "cli", "raw_text": text},
         )
 
-    return Event(
-        type="user_text_input",
-        timestamp=ts,
-        payload={"text": text, "source": "cli"},
-    )
+    return None
 
 
 

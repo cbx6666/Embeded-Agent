@@ -184,16 +184,16 @@ def _create_screen_window(args: argparse.Namespace):
 
 def run_screen_only(args: argparse.Namespace) -> None:
     from src.adapters.screen import ScreenDisplayAdapter
-    from src.agent.action import display, render_pet_expression
+    from src.agent.action import display
 
     window = _create_screen_window(args)
     window.start()
     adapter = ScreenDisplayAdapter(hardware=window)
     sequence = [
         ("idle", display("空闲", kind="idle")),
-        ("listening", render_pet_expression("listening")),
-        ("thinking", render_pet_expression("thinking")),
-        ("speaking", render_pet_expression("happy")),
+        ("listening", display("聆听中", kind="listening")),
+        ("thinking", display("思考中", kind="thinking")),
+        ("speaking", display("播报中", kind="speaking")),
         ("focus", display("专注模式", kind="focus_mode")),
     ]
     for name, action in sequence:
@@ -215,7 +215,7 @@ def run_vision_and_screen(args: argparse.Namespace) -> None:
         vision_dependencies_met,
         vision_emotion_backend_ready,
     )
-    from src.agent.action import display, render_pet_expression
+    from src.agent.action import display
 
     if not vision_dependencies_met():
         print("缺少依赖：pip install opencv-python-headless mediapipe pygame")
@@ -238,13 +238,12 @@ def run_vision_and_screen(args: argparse.Namespace) -> None:
                 expr = {"none": "neutral", "mild": "neutral", "moderate": "tired", "high": "tired"}.get(
                     level, "neutral"
                 )
-                screen.execute(render_pet_expression(expr))
-                screen.execute(display(f"疲劳: {level}", kind="status"))
+                screen.execute(display(f"疲劳: {level}", kind=expr))
             elif event.type == "user_emotion_updated":
                 emo = str(p.get("emotion", "neutral"))
                 print(f"[表情] {emo}", flush=True)
                 mapped = emo if emo in {"happy", "neutral", "tired", "stressed"} else "neutral"
-                screen.execute(render_pet_expression(mapped))
+                screen.execute(display(f"情绪: {emo}", kind=mapped))
 
     cfg = VisionAffectConfig(
         camera_index=args.camera,

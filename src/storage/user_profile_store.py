@@ -12,7 +12,7 @@ UserProfileStore 只负责把显式用户画像读写到 JSON 文件。
 显式 profile 是 Authoritative Source，需要独立于运行期状态和长期记忆持久化。
 
 边界：
-只有 UserProfileService 应该调用本仓库；PersonalContextBuilder 通过 service 读取快照。
+只有 UserProfileService 应该调用本仓库；其余模块通过 service 读取快照。
 """
 
 import json
@@ -45,8 +45,8 @@ class UserProfileStore:
             if isinstance(raw_profile, dict)
         }
 
-    def save_profiles(self, profiles: dict[str, dict[str, Any]]) -> None:
-        """把 profiles 原始字典写入 JSON 文件。"""
+    def save_profiles(self, profiles: dict[str, dict[str, Any]], *, compact: bool = True) -> None:
+        """把 profiles 原始字典写入 JSON 文件（默认紧凑 JSON）。"""
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -56,4 +56,8 @@ class UserProfileStore:
                 for user_id, profile in sorted(profiles.items())
             },
         }
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        if compact:
+            text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        else:
+            text = json.dumps(payload, ensure_ascii=False, indent=2)
+        self.path.write_text(text, encoding="utf-8")

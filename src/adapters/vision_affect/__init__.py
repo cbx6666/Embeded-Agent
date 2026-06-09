@@ -20,6 +20,10 @@ from src.adapters.vision_affect.backends import (
 )
 from src.adapters.vision_affect.config import VisionAffectConfig
 from src.adapters.vision_affect.pipeline import FatigueLevel
+from src.adapters.vision_affect.runtime_env import (
+    configure_ml_runtime_env,
+    vision_runtime_healthy,
+)
 
 __all__ = [
     "EventEmitSink",
@@ -30,4 +34,6 @@ __all__ = [
     "build_emotion_backend",
     "vision_dependencies_met",
     "vision_emotion_backend_ready",
+    "configure_ml_runtime_env",
+    "vision_runtime_healthy",
 ]

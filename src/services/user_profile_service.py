@@ -4,14 +4,14 @@ from __future__ import annotations
 
 它是什么：
 UserProfileService 是显式用户画像的唯一业务入口，负责用户创建/切换、资料更新、
-偏好更新、展示渲染，以及为 PersonalContextBuilder 提供只读 profile 字典。
+偏好更新、展示渲染，以及为 LLM prompt / 展示层提供只读 profile 字典。
 
 它不是什么：
 它不是长期记忆管线，不接收 LLM 自由生成内容，不从模糊行为直接写入 profile。
 
 为什么存在：
 UserProfile 是 Authoritative Source。所有 display_name、age、hobbies、TTS 设置
-和明确偏好，都必须从这里读取，避免同一事实在 LongTermMemory 中出现第二份真相。
+和明确偏好，都必须从这里读取，避免画像事实在多处重复存储。
 
 边界：
 UserProfileService 不依赖 LongTermMemoryPipeline；它只依赖 UserProfileStore。
@@ -22,10 +22,11 @@ from collections.abc import Callable
 from dataclasses import asdict, fields
 from typing import Any
 
-from src.agent.user.user_profile import UserInfo, UserPreference, UserProfile
+from src.services.user_profile_model import UserInfo, UserPreference, UserProfile
 from src.storage.user_profile_store import UserProfileStore
 
 DEFAULT_USER_ID = "default"
+_PROFILE_TOUCH_SAVE_DEBOUNCE_SEC = 5.0
 
 LIST_INFO_KEYS = {"hobbies"}
 INT_INFO_KEYS = {"age"}
@@ -60,6 +61,8 @@ class UserProfileService:
     ) -> None:
         self.store = store
         self._now_fn = now_fn or time.time
+        self._touch_dirty = False
+        self._touch_last_save_mono = 0.0
         self.profiles = _profiles_from_raw(self.store.load_profiles())
         self.ensure_user(DEFAULT_USER_ID, display_name="default")
 
@@ -110,13 +113,38 @@ class UserProfileService:
 
         return [self.profiles[user_id] for user_id in sorted(self.profiles)]
 
-    def touch_user(self, user_id: str | None, *, timestamp: float | None = None) -> str:
+    def touch_user(
+        self,
+        user_id: str | None,
+        *,
+        timestamp: float | None = None,
+        persist: bool = True,
+    ) -> str:
         """更新用户最近活跃时间；不写入任何推断信息。"""
 
         profile = self.ensure_user(user_id)
         self._mark_updated(profile, self._now(timestamp), last_seen=True)
-        self._save_profiles()
+        if persist:
+            self._touch_dirty = True
+            self._maybe_flush_touch_save()
         return profile.info.user_id
+
+    def flush_profiles(self) -> None:
+        """立即落盘（shutdown 时调用）。"""
+        if self._touch_dirty:
+            self._save_profiles()
+            self._touch_dirty = False
+            self._touch_last_save_mono = time.monotonic()
+
+    def _maybe_flush_touch_save(self, *, force: bool = False) -> None:
+        if not self._touch_dirty and not force:
+            return
+        now = time.monotonic()
+        if not force and now - self._touch_last_save_mono < _PROFILE_TOUCH_SAVE_DEBOUNCE_SEC:
+            return
+        self._save_profiles()
+        self._touch_dirty = False
+        self._touch_last_save_mono = now
 
     def switch_user(
         self,
@@ -216,18 +244,6 @@ class UserProfileService:
     def render_info_update_result(self, user_id: str | None, key: str) -> str:
         return f"已更新 {self.user_label(user_id)} 的资料: {key}"
 
-    def info_context(self, user_id: str | None) -> str:
-        """生成紧凑基础资料摘要，供 prompt 使用。"""
-
-        lines = _info_lines(self.ensure_user(user_id).info)
-        return "；".join(line.removeprefix("- ") for line in lines) if lines else "暂无明确资料"
-
-    def preference_context(self, user_id: str | None) -> str:
-        """生成紧凑偏好摘要，供 prompt 使用。"""
-
-        lines = _preference_lines(self.ensure_user(user_id).preference)
-        return "；".join(line.removeprefix("- ") for line in lines) if lines else "暂无明确偏好"
-
     def user_label(self, user_id: str | None) -> str:
         profile = self.ensure_user(user_id)
         display_name = profile.info.display_name or profile.info.user_id
@@ -242,12 +258,6 @@ class UserProfileService:
 
     def uses_gentle_reminder(self, user_id: str | None) -> bool:
         return self.ensure_user(user_id).preference.reminder_style == "gentle"
-
-    def preferred_break_activity(self, user_id: str | None) -> str | None:
-        preference = self.ensure_user(user_id).preference
-        content_type = preference.favorite_content_types[0] if preference.favorite_content_types else ""
-        music_style = preference.favorite_music_styles[0] if preference.favorite_music_styles else ""
-        return music_style or content_type or None
 
     def tts_payload(self, user_id: str | None) -> dict[str, object]:
         preference = self.ensure_user(user_id).preference

@@ -52,13 +52,20 @@ class EventEmitSink(Protocol):
 
 
 def vision_dependencies_met() -> bool:
+    """在主线程真正 import cv2 / mediapipe。
+
+    必须是真 import（而非 find_spec）：mediapipe 会拉起 TensorFlow 计算图，
+    在主线程提前、干净地完成一次初始化后，后台采集线程再复用即可正常工作。
+    若推迟到后台线程才首次 import mediapipe（且此时 acl OM 上下文已激活），
+    会触发 TF ``CollectiveRegistry::Register`` 二次注册并 ``Aborted (core dumped)``。
+    """
+
     try:
         import cv2  # noqa: F401
         import mediapipe as mp  # noqa: F401
-
-        return True
     except ImportError:
         return False
+    return True
 
 
 def vision_emotion_backend_ready(config: VisionAffectConfig) -> bool:
@@ -204,6 +211,9 @@ class VisionAffectInputAdapter:
             print("[vision_affect] 线程异常退出:\n" + traceback.format_exc(), file=sys.stderr)
 
     def _run_capture_session(self) -> None:
+        from src.adapters.vision_affect.runtime_env import configure_ml_runtime_env
+
+        configure_ml_runtime_env()
         import cv2
         import mediapipe as mp
 

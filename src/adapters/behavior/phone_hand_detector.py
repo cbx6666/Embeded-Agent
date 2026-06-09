@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-"""YOLO26 手机检测 + 手腕邻近 → 是否手持手机。"""
+"""YOLO26 手机检测 + 多信号 OR 判定是否玩手机。
+
+单帧候选（任一满足）：手机+手腕邻近 / 仅手机 / 人脸可见。
+滑窗稳定：上述信号或镜头里持续出现手机框（sustained）。
+"""
 
 import math
 import time
@@ -52,6 +56,9 @@ class PhoneHandFrameResult:
     looking_down: bool = False
     head_down_assist: bool = False
     """未检出手机时，靠 Face Mesh 低头+手腕区域辅助判分心。"""
+    face_detected: bool = False
+    phone_signal: str = "none"
+    """本帧判定依据：phone_wrist / phone / face / sustained / none。"""
     posture: str = "unknown"
     activity: str = "unknown"
     posture_confidence: float = 0.0
@@ -95,7 +102,7 @@ def _phone_likely_held_up(
     *,
     person_count: int,
     min_conf: float,
-    max_center_y_ratio: float = 0.78,
+    max_center_y_ratio: float = 0.92,
 ) -> bool:
     """手机在画面上半部且置信度够高 → 视为手持（单手场景，不强制手腕邻近）。"""
     if not phones or person_count <= 0:
@@ -162,16 +169,20 @@ class PhoneHandProximityDetector:
         detect_model: str | Path | None = None,
         pose_model: str | Path | None = None,
         device: str = "cpu",
-        phone_conf: float = 0.25,
+        phone_conf: float = 0.15,
         pose_conf: float = 0.5,
         min_kpt_conf: float = 0.3,
         distance_ratio: float = 1.0,
-        loose_distance_mult: float = 1.75,
-        phone_solo_conf: float = 0.45,
+        loose_distance_mult: float = 3.5,
+        phone_solo_conf: float = 0.2,
         absent_grace_frames: int = 10,
         enable_head_down_fusion: bool = True,
         head_down_ratio_thresh: float = 0.10,
-        hold_seconds: float = 1.0,
+        hold_seconds: float = 2.0,
+        on_window_sec: float = 2.0,
+        on_ratio: float = 0.3,
+        on_min_positive_frames: int = 1,
+        off_grace_sec: float | None = None,
         imgsz: int = 640,
         verbose: bool = False,
         inference_backend: InferenceBackend = "auto",
@@ -192,6 +203,11 @@ class PhoneHandProximityDetector:
         self.phone_solo_conf = float(phone_solo_conf)
         self.absent_grace_frames = int(absent_grace_frames)
         self.hold_seconds = float(hold_seconds)
+        # 滑窗迟滞：开（快、容忍漏检）/ 关（慢、容忍短暂掉检），取代旧的“连续硬复位”。
+        self.on_window_sec = float(on_window_sec)
+        self.on_ratio = float(on_ratio)
+        self.on_min_positive_frames = max(1, int(on_min_positive_frames))
+        self.off_grace_sec = float(off_grace_sec) if off_grace_sec is not None else 8.0
         self._presence = PersonPresenceTracker(grace_frames=self.absent_grace_frames)
         self.enable_head_down_fusion = bool(enable_head_down_fusion)
         self.head_down_ratio_thresh = float(head_down_ratio_thresh)
@@ -208,6 +224,13 @@ class PhoneHandProximityDetector:
         self._om_runner: Any = None
         self._backend_resolved: str = ""
         self._positive_since: float | None = None
+        # (timestamp, is_positive) 滑窗：玩手机迟滞
+        self._presence_window: list[tuple[float, bool]] = []
+        # (timestamp, has_phone) 滑窗：镜头里是否持续出现手机框
+        self._phone_frame_window: list[tuple[float, bool]] = []
+        self._stable_on: bool = False
+        self._phone_sustain_sec: float = 3.0
+        self._phone_sustain_ratio: float = 0.25
         self._detect_om_path = Path(detect_om) if detect_om else None
         self._pose_om_path = Path(pose_om) if pose_om else None
         self._last_primary_person: Any = None
@@ -318,9 +341,10 @@ class PhoneHandProximityDetector:
             person_count=1 if person_visible else 0,
             min_conf=self.phone_solo_conf,
         )
-        near = near_strict or near_loose
-        present_instant = bool(phones) and (near_strict or near_loose or held_up)
+        wrist_near = near_strict or near_loose
+        phone_any = bool(phones)
         head_hint = self._analyze_head_down(frame_bgr)
+        face_detected = bool(getattr(head_hint, "face_detected", False))
         head_down_assist = self._head_down_phone_assist(
             frame_bgr,
             person_visible=person_visible,
@@ -328,16 +352,26 @@ class PhoneHandProximityDetector:
             head_hint=head_hint,
             phase=phase,
         )
-        if phase == "left":
+        # 瞬时层：(人脸或手腕>=1) 且检出手机；仅手机无脸无腕走 stable 层长时间连续检测。
+        phone_wrist = phone_any and wrist_near
+        has_face_or_wrist = face_detected or len(wrists) >= 1
+        phone_with_cue = phone_any and has_face_or_wrist
+        if phase == "left" and not phone_any:
             instant = False
-        elif phase == "absent_grace":
-            instant = bool(phones) or head_down_assist
+            phone_signal = "none"
+        elif phone_wrist:
+            instant = True
+            phone_signal = "phone_wrist"
+        elif phone_with_cue:
+            instant = True
+            phone_signal = "phone_face" if face_detected and not wrist_near else "phone"
         else:
-            instant = present_instant or head_down_assist
+            instant = False
+            phone_signal = "phone_solo" if phone_any else "none"
         conf = 0.0
-        if phones and instant:
-            conf = min(p.confidence for p in phones)
-        elif head_down_assist and instant:
+        if phones and phone_signal in {"phone_wrist", "phone", "phone_face"}:
+            conf = max(p.confidence for p in phones)
+        elif head_down_assist:
             conf = max(0.45, min(0.75, 0.45 + head_hint.down_ratio))
         from src.adapters.behavior.pose_inference import infer_posture_and_activity
 
@@ -353,7 +387,7 @@ class PhoneHandProximityDetector:
             phone_in_hand=instant,
             confidence=conf,
             phones=phones,
-            wrist_near_phone=near,
+            wrist_near_phone=wrist_near,
             raw_phone_count=len(phones),
             person_count=1 if person_visible else 0,
             person_count_pose=person_pose,
@@ -363,6 +397,8 @@ class PhoneHandProximityDetector:
             wrist_count=len(wrists),
             looking_down=head_hint.looking_down,
             head_down_assist=head_down_assist,
+            face_detected=face_detected,
+            phone_signal=phone_signal,
             posture=posture,
             activity=activity,
             posture_confidence=posture_conf,
@@ -443,22 +479,73 @@ class PhoneHandProximityDetector:
             "all_detections": all_dets[:12],
         }
 
+    def _phone_sustained_in_frame(self, now: float) -> bool:
+        """镜头里持续出现手机框：最近窗口内有一定比例帧检出手机。"""
+
+        recent = [
+            (t, v) for (t, v) in self._phone_frame_window if now - t <= self._phone_sustain_sec
+        ]
+        if not recent:
+            return False
+        positives = sum(1 for _, v in recent if v)
+        return positives >= 1 and (positives / len(recent)) >= self._phone_sustain_ratio
+
     def analyze_frame_stable(self, frame_bgr: np.ndarray) -> PhoneHandFrameResult:
-        """带 hold_seconds 时间窗的稳定判定。"""
+        """滑窗迟滞稳定判定。
+
+        本帧正信号（任一即可）：
+        - (人脸或手腕>=1) 且检出手机（instant 层）
+        - 镜头里长时间连续出现手机框（sustained 层）
+
+        - 开：最近 ``on_window_sec`` 内正帧占比 ≥ ``on_ratio`` 且正帧数 ≥ ``on_min_positive_frames``
+        - 关：连续 ``off_grace_sec`` 无正帧才释放
+        """
         from src.adapters.behavior.pose_inference import infer_posture_and_activity
 
         result = self.analyze_frame(frame_bgr)
         now = time.time()
-        if result.phone_in_hand:
-            if self._positive_since is None:
-                self._positive_since = now
-            held = (now - self._positive_since) >= self.hold_seconds
-            result.phone_in_hand = held
-            if held:
-                result.confidence = max(result.confidence, 0.85)
+        has_phone_box = result.raw_phone_count > 0
+        self._phone_frame_window.append((now, has_phone_box))
+        phone_horizon = max(self._phone_sustain_sec, self.off_grace_sec) + 1.0
+        self._phone_frame_window = [
+            (t, v) for (t, v) in self._phone_frame_window if now - t <= phone_horizon
+        ]
+        sustained = self._phone_sustained_in_frame(now)
+        frame_positive = bool(result.phone_in_hand) or has_phone_box or sustained
+        if sustained:
+            frame_positive = True
+            if result.phone_signal == "none":
+                result.phone_signal = "sustained"
+
+        self._presence_window.append((now, frame_positive))
+        horizon = max(self.on_window_sec, self.off_grace_sec) + 1.0
+        self._presence_window = [
+            (t, v) for (t, v) in self._presence_window if now - t <= horizon
+        ]
+
+        recent = [(t, v) for (t, v) in self._presence_window if now - t <= self.on_window_sec]
+        positives = sum(1 for _, v in recent if v)
+        ratio = (positives / len(recent)) if recent else 0.0
+        last_positive_ts = max((t for t, v in self._presence_window if v), default=None)
+        absent_for = (now - last_positive_ts) if last_positive_ts is not None else None
+
+        if not self._stable_on:
+            if positives >= self.on_min_positive_frames and ratio >= self.on_ratio:
+                self._stable_on = True
         else:
-            self._positive_since = None
-            result.phone_in_hand = False
+            if absent_for is None or absent_for >= self.off_grace_sec:
+                self._stable_on = False
+
+        result.phone_in_hand = self._stable_on
+        if self._stable_on:
+            result.confidence = max(result.confidence, 0.85)
+            if result.phone_signal == "none" and sustained:
+                result.phone_signal = "sustained"
+            # 稳定玩手机即视为在场（pose 常被手机遮挡）
+            self._presence.absent_frames = 0
+            self._presence.phase = "present"
+            result.presence_phase = "present"
+            result.person_visible = True
         posture, activity, posture_conf = infer_posture_and_activity(
             person=self._last_primary_person,
             person_visible=result.person_visible,

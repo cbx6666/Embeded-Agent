@@ -77,16 +77,18 @@ def make_behavior_attention_event(
     source: str = "camera_v1",
     confidence: float | None = None,
     timestamp: int | None = None,
+    yolo_phone_detected: bool | None = None,
 ) -> Event:
     """构造用户注意力与行为更新事件。"""
-    return _build_event(
-        "user_attention_updated",
-        timestamp=timestamp,
-        attention=attention,
-        behavior=behavior,
-        source=source,
-        confidence=_normalize_confidence(confidence),
-    )
+    payload: dict[str, object] = {
+        "attention": attention,
+        "behavior": behavior,
+        "source": source,
+        "confidence": _normalize_confidence(confidence),
+    }
+    if yolo_phone_detected is not None:
+        payload["yolo_phone_detected"] = bool(yolo_phone_detected)
+    return _build_event("user_attention_updated", timestamp=timestamp, **payload)
 
 
 def make_fatigue_event(
@@ -179,29 +181,6 @@ def user_emotion_updated_standard(
         confidence=_normalize_confidence(confidence),
         source=source,
         model=model,
-    )
-
-
-def make_display_sensor_event(
-    *,
-    expression: str,
-    source: str,
-    brightness: int | None = None,
-    fps: int | None = None,
-    sensor_values: dict[str, object] | None = None,
-    screen_id: str | None = None,
-    timestamp: int | None = None,
-) -> Event:
-    """构造显示设备状态快照事件。"""
-    return _build_event(
-        "display_sensor_updated",
-        timestamp=timestamp,
-        expression=expression,
-        source=source,
-        brightness=int(brightness) if brightness is not None else None,
-        fps=int(fps) if fps is not None else None,
-        sensor_values=sensor_values,
-        screen_id=screen_id,
     )
 
 

@@ -1,47 +1,46 @@
-﻿# adapters
+# adapters
 
 `adapters/` 是输入输出适配层，负责把外部世界转换成系统可处理的事件，或把系统动作转换成具体输出。
 
 ## 职责
 
-- 接收用户输入（CLI、mock、摄像头、麦克风、显示侧传感器等）
+- 接收用户输入（CLI、mock、摄像头、麦克风、环境传感器等）
 - 解析 mock 命令
 - 执行控制台输出、显示输出、语音输出
-- 为后续硬件接入提供边界
+- 为硬件联调提供边界
+
+## 与 Agent 的协议
+
+**Event**：adapters 只产生 `src/agent/event/types.py` 中注册的 20 种事件。已删除 `user_text_input`、`display_sensor_updated` 等，CLI 不再把任意文本当事件注入。
+
+**Action**：adapters 只执行 5 种动作：`speak`、`display`、`start_timer`、`stop_timer`、`set_tts_volume`。已删除 `render_pet_expression`、`set_light_state`、`start_voice_capture`、`stop_voice_capture` 等。
 
 ## 文件说明
 
-- `cli_input.py`：命令行输入适配器
-- `mock_input.py`：将 `/mock ...` 命令转换为状态更新事件（含 `presence`、`attention`、`behavior`、`emotion`、`fatigue`）
-- `console_output.py`：将 `speak`、`display` 动作映射为控制台输出
-- `pet_display.py`：桌宠显示适配器；消费 `display` / `render_pet_expression` / `set_light_state`，并上报 `display_sensor_updated`
-- `voice_adapter.py`：语音输入输出适配器；上报 `speech_recognized`，消费 `speak`
-- `voice/`：板级语音完整实现（百度 ASR/TTS、唤醒词、麦克风仲裁）；由 `--voice` 启用
-- `behavior_adapter.py`：行为识别适配器；发出行为线索与行为汇总事件
-- `behavior/`：YOLO26 手机+手腕+**姿势/活动**（`yolo26n-pose.om` NPU）；上报 `user_presence_updated` / `user_attention_updated` / `user_posture_updated` / `user_activity_updated`
-- ~~`pose/`~~：已并入 `behavior/`，勿单独启用
-- `vision_affect/`：摄像头 + **MediaPipe Face Mesh**；**疲劳** 由 **EAR**（眼部 PERCLOS）与 **MAR**（打哈欠/张口，滑动窗内占比）加权融合后滞回分档；**情绪** 默认 **WuJie-OM**，也支持 `wujie-vgg19`、`raf`、`deepface`、`none`。模型和后端放在 **`backends/`**，**向上只发** `user_fatigue_updated` / `user_emotion_updated`。**不使用 YOLO**；内核不 import 本包内部实现。
+| 路径 | 责任 |
+|------|------|
+| `cli_input.py` | 解析 `/focus start`、`/focus stop` 等结构化命令；普通文本不再产生事件 |
+| `mock_input.py` | 将 `/mock ...` 转换为状态更新事件 |
+| `console_output.py` | 执行 `speak`、`display`、`set_tts_volume` |
+| `screen/screen_adapter.py` | 桌宠显示；只消费 `display` |
+| `screen/screen_adapter.py` | 屏幕输出；只消费 `display` |
+| `voice/` | 板级语音（百度 ASR/TTS、唤醒词、麦克风仲裁）；上报 `speech_recognized` 等语音事件，消费 `speak` / `set_tts_volume` |
+| `behavior/` | YOLO26 行为/姿势；上报 `user_presence_updated` / `user_attention_updated` / `user_posture_updated` / `user_activity_updated` |
+| `vision_affect/` | 疲劳（EAR/MAR）与情绪；上报 `user_fatigue_updated` / `user_emotion_updated` |
+| `environment/` | ESP32/STM32 环境传感器；上报 `light_level_updated` 等 |
 
 ## 视觉依赖
 
-见根目录 **`requirements.txt`**（含 `mediapipe`、`deepface` 等）。启动示例：
+见根目录 `requirements.txt`。启动示例：
 
 ```bash
 python -m src.main
 python -m src.main --llm
 python -m src.main --llm --vision --emotion-backend raf --raf-ckpt path/to/raf_resnet18.pth
-python -m src.main --emotion-backend wujie-om
-# 默认 OM：models/wujie/wujie_vgg19_static.om；感知 tick 默认 4 Hz（--perception-hz 可改）
 ```
 
-- 环境变量 **`EMBED_EMOTION_BACKEND`** 可设 `wujie-om` / `wujie-vgg19` / `raf` / `deepface` / `none`（覆盖 `--emotion-backend`）。
-- 环境变量 **`EMBED_PERCEPTION_HZ`** 统一视觉采集/行为 OM/情绪帧率（默认 `4`）。
-- 环境变量 **`WUJIE_VGG19_CKPT`** 可配置 WuJie VGG19 checkpoint。
-- 环境变量 **`RAF_RESNET18_CKPT`** 在 RAF 模式下可代替 `--raf-ckpt`。
+环境变量 `EMBED_EMOTION_BACKEND`、`EMBED_PERCEPTION_HZ` 可覆盖部分运行时参数。
 
-## 后续扩展方向
+## 原则
 
-- `mic_input.py` 接入更完整的实时语音输入
-- `screen_output.py` / `tts_output.py` / `led_output.py` 等更细粒度的硬件适配器
-
-适配层的原则是：外部接口可以变化，但内部事件和动作模型尽量稳定。
+外部接口可以变化，但进入 Agent 的 Event 和 Action 必须落在注册闭集内。适配层不修改 `AgentState`，不直接调用决策逻辑。

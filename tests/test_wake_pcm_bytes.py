@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.adapters.voice.wake_word_detector import _pcm_chunk_bytes
+from src.adapters.voice.wake.detector import _pcm_chunk_bytes
 
 
 class WakePcmBytesTestCase(unittest.TestCase):

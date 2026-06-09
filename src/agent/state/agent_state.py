@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """系统总状态模型。
 
@@ -56,10 +56,7 @@ class AgentState:
             environment=EnvironmentState(**_only_fields(data.get("environment", {}), EnvironmentState)),
             cooldown=CooldownState(**_only_fields(data.get("cooldown", {}), CooldownState)),
             runtime_history=RuntimeHistory(
-                **_only_fields(
-                    data.get("runtime_history", data.get("memory", {})),
-                    RuntimeHistory,
-                )
+                **_only_fields(data.get("runtime_history", {}), RuntimeHistory)
             ),
             current_user_id=str(data.get("current_user_id") or "default"),
         )

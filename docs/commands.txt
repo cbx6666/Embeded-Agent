@@ -1,59 +1,54 @@
-﻿智能陪伴与情境交互终端 Agent MVP
-命令说明
+﻿Embeded-Agent CLI 命令速查（agent> 提示符）
 
-一、普通文本命令
+一、专注控制（结构化文本，走 RuleHandler）
 
-1. 开始专注 25 分钟
-启动一轮专注计时，并切换到 focus 模式。
+  开始专注 25 分钟
+  专注 25 分钟
+  结束专注
+  停止专注
 
-2. 结束专注
-手动结束当前专注，并记录本次专注时长。
+二、Mock 状态（模拟感知，走 state_only）
 
-3. 你好
-进行基础文本交互。
+  /mock presence present | away | unknown
+  /mock attention focused | distracted | idle
+  /mock behavior working | phone_use | staring | desk_rest | away | unknown
+  /mock emotion neutral | tired | stressed | happy
+  /mock fatigue none | mild | moderate | high
+  /mock posture sitting | standing | leaning | lying | unknown
+  /mock activity studying | working | resting | unknown
 
-4. 现在状态如何
-查看当前关键状态摘要。
+  说明：自然语言对话请用语音（/voice_once）或代码注入 speech_recognized；
+  环境传感器读数需 ESP32 适配器或事件注入（见 docs/testing/agent_functional_test_guide.md）。
 
-二、mock 命令
+三、用户画像（UserProfile，权威显式数据）
 
-1. /mock presence present
-将用户在场状态设为 present。
+  /users
+  /profile
+  /switch_user <user_id> [显示名]
+  /set_info age 12
+  /set_info gender 女
+  /set_info identity 小学生
+  /set_info hobbies 画画,足球
+  /set_pref favorite_content_types 音乐,相声,脱口秀
+  /set_pref reminder_style 温和
+  /set_pref favorite_music_styles 轻音乐,古风
 
-2. /mock presence away
-将用户在场状态设为 away。
+四、语音（需 --voice 或全栈启动）
 
-3. /mock attention focused
-将用户注意力状态设为 focused。
+  /voice_once          手动录一轮 → speech_recognized
+  /voice_replay        回放最近一次录音
 
-4. /mock attention distracted
-将用户注意力状态设为 distracted。
+五、系统命令
 
-5. /mock attention idle
-将用户注意力状态设为 idle。
+  /state               完整 AgentState
+  /history             最近事件与消息
+  /help                帮助
+  /exit                退出
 
-6. /mock emotion neutral
-将用户情绪状态设为 neutral。
+六、启动示例
 
-7. /mock emotion tired
-将用户情绪状态设为 tired。
+  python -m src.main --llm              # CLI Agent + LLM（推荐测试）
+  python -m src.main                    # 全栈（桌宠+视觉+语音）
+  python -m src.main --llm --voice      # CLI + 语音
 
-8. /mock emotion stressed
-将用户情绪状态设为 stressed。
-
-9. /mock emotion happy
-将用户情绪状态设为 happy。
-
-三、系统命令
-
-1. /state
-查看完整状态快照。
-
-2. /history
-查看最近事件、最近消息和专注记录。
-
-3. /help
-查看帮助信息。
-
-4. /exit
-退出程序。
+详细测试流程：docs/testing/agent_functional_test_guide.md

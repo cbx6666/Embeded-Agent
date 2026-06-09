@@ -39,16 +39,15 @@ class JsonStore:
             return state_data
         return None
 
-    def save_state(self, state: AgentState) -> None:
-        """将当前状态快照写入 JSON 文件。"""
-        # 确保存储目录存在，便于 data/ 目录首次运行时自动创建。
+    def save_state(self, state: AgentState, *, compact: bool = True) -> None:
+        """将当前状态快照写入 JSON 文件（默认紧凑 JSON，减小体积与写盘耗时）。"""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "updated_at": int(time.time()),
-            # AgentState 自己负责把嵌套 dataclass 转成 dict。
             "state": state.to_dict(),
         }
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        if compact:
+            text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        else:
+            text = json.dumps(payload, ensure_ascii=False, indent=2)
+        self.path.write_text(text, encoding="utf-8")

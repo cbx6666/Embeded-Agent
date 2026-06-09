@@ -1,18 +1,12 @@
-# 显示与灯光输出模块
+# 显示输出模块
 
-## Event
-
-| Event.type | 语义 | 边界 |
-|------------|------|------|
-| `display_sensor_updated` | 显示侧设备状态变化，如亮度、FPS、触摸状态。 | 只上报设备事实，不承载用户状态和业务结果。 |
-
-## Action
+## Action（当前闭集）
 
 | Action.type | 语义 | 边界 |
 |-------------|------|------|
-| `display` | 显示文本、状态、结果或界面。 | 显示模块只执行渲染，不理解用户命令。提醒语义放在 payload 的 `kind` / `level` / `reason` 中。 |
-| `render_pet_expression` | 渲染桌宠表情或视觉动画。 | 只负责视觉表现，不负责提醒策略。 |
-| `set_light_state` | 设置灯光状态、颜色、模式、亮度。 | 只负责灯光执行，不负责决定何时提醒。 |
+| `display` | 显示文本、状态、结果或界面。 | 显示模块只执行渲染，不理解用户命令。提醒语义放在 payload 的 `kind` / `reason` 中。 |
+
+已删除且不再由 Agent 生成：`render_pet_expression`、`set_light_state`。
 
 建议的 `display.payload` 字段：
 
@@ -20,23 +14,29 @@
 - `title`
 - `status`
 - `kind`
-- `level`
 - `reason`
 
-建议的 `set_light_state.payload` 字段：
+## Adapter（当前实现）
 
-- `state`
-- `color`
-- `pattern`
-- `brightness`
-- `duration_ms`
-- `kind`
-- `level`
-- `reason`
+| 模块 | 责任 |
+|------|------|
+| `ConsoleOutput` | 默认开发输出：将 `display` / `speak` 打印到终端或日志 |
+| `ScreenDisplayAdapter` + `screen_window.py` | 有 DISPLAY 时驱动窗口桌宠 |
+| `HeadlessPetDisplay` | 无 DISPLAY 时渲染 PNG 并推送到 `PetPreviewServer` |
+| `src/pc_display/` | 独立 PC USB 显示 demo，不在主 Agent 执行链路 |
 
-## Adapter
+主链路：`ActionRealizer` 生成 `display` → `DeviceAdapter.output.execute()` → 上述适配器之一。
 
-| Adapter | 责任 |
-|---------|------|
-| `PetDisplayAdapter` | 消费 `display`、`render_pet_expression`，驱动屏幕和 UI。 |
-| `LightOutputAdapter` | 消费 `set_light_state`，驱动灯光设备。 |
+桌宠表情（idle / listening / thinking / speaking / focus_mode）由 `ScreenDisplayAdapter.sync_visual_state()` 驱动：
+每个事件处理完成后，`main.py` 将 `AgentState.interaction.dialogue_state` 与专注计时同步到 pygame 帧。
+`display` 的 `kind=notification` 只更新顶部状态文案，不改变脸型；播报中脸型由 `tts_started` → `dialogue_state=speaking` 切换。
+
+## 决策链路
+
+是否显示、显示什么，由以下入口决定（经对应 Handler + `ActionRealizer`）：
+
+- 用户语音：`speech_recognized` → `SpeechLlmHandler`
+- 自主关怀：`behavior_distraction_check` / `wellness_care_check` / `environment_care_check`（各独立周期与 prompt）
+- 传感器播报：`sensor_status_report`（确定性规则，不调 LLM）
+
+`display_sensor_updated` 事件已从主链删除；显示侧传感器若需接入，应评估是否有 reducer 闭环后再单独设计。

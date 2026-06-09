@@ -1,27 +1,19 @@
-"""LongTermMemory 子系统公开入口。
+"""结构化用户记忆包：LLM 异步抽取 + 相关性检索。"""
 
-本包只导出长期记忆学习链路：候选、校验、合并、管线和仓库。决策层不得直接读取
-LongTermMemoryStore，只能通过 PersonalContextBuilder 获取只读 PersonalContext。
-"""
-
-from src.agent.memory.long_term_memory import LongTermMemory
-from src.agent.memory.long_term_memory_pipeline import (
-    LongTermMemoryContext,
-    LongTermMemoryContextBuilder,
-    LongTermMemoryPipeline,
-    LongTermMemoryRunResult,
+from src.agent.memory.memory_extractor import MemoryExtractor
+from src.agent.memory.memory_model import (
+    GROUP_KEY_BY_TYPE,
+    MEMORY_TYPES,
+    MemoryItem,
+    make_memory_item,
 )
-from src.agent.memory.memory_candidate import MemoryCandidate
-from src.agent.memory.memory_consolidator import MemoryConsolidator
-from src.agent.memory.memory_validator import MemoryValidator
+from src.agent.memory.memory_service import MemoryService
 
 __all__ = [
-    "LongTermMemory",
-    "LongTermMemoryContext",
-    "LongTermMemoryContextBuilder",
-    "LongTermMemoryPipeline",
-    "LongTermMemoryRunResult",
-    "MemoryCandidate",
-    "MemoryConsolidator",
-    "MemoryValidator",
+    "MemoryService",
+    "MemoryExtractor",
+    "MemoryItem",
+    "MEMORY_TYPES",
+    "GROUP_KEY_BY_TYPE",
+    "make_memory_item",
 ]

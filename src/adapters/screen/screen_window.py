@@ -8,9 +8,10 @@ import time
 
 import pygame
 
-from src.adapters.screen.pet_renderer import AgentState, draw_pet_frame
+from src.adapters.screen.pet_display_context import PetDisplayContext
+from src.adapters.screen.pet_renderer import agent_state_from_str, draw_pet_frame
 
-DEFAULT_WINDOW_SIZE = (400, 320)
+DEFAULT_WINDOW_SIZE = (960, 540)
 BG_COLOR = (30, 30, 40)
 FPS = 30
 
@@ -33,7 +34,6 @@ def _env_fullscreen() -> bool:
 
 
 def parse_screen_size_arg(raw: str | None) -> tuple[int, int] | None:
-    """Parse ``1920x1080`` style CLI size."""
     if not raw:
         return None
     text = raw.strip().lower()
@@ -55,17 +55,12 @@ def create_screen_window(
     size: tuple[int, int] | None = None,
     size_arg: str | None = None,
 ) -> ScreenWindow:
-    """Factory used by ``main`` and test scripts."""
     resolved = size or parse_screen_size_arg(size_arg)
     return ScreenWindow(fullscreen=fullscreen, size=resolved)
 
 
 class ScreenWindow:
-    """Pygame window for displaying pet and agent status.
-
-    Supports fixed window, custom size, or fullscreen on the current display
-    (HDMI / VNC ``DISPLAY=:1`` etc.). Layout scales with resolution.
-    """
+    """Pygame window for displaying pet dashboard."""
 
     def __init__(
         self,
@@ -74,7 +69,6 @@ class ScreenWindow:
         size: tuple[int, int] | None = None,
     ) -> None:
         if not os.environ.get("DISPLAY"):
-            # VNC 默认 :1；SSH 无 DISPLAY 时 pygame 无法开窗口
             if os.path.exists("/tmp/.X11-unix/X1"):
                 os.environ.setdefault("DISPLAY", ":1")
         os.environ.setdefault("SDL_VIDEODRIVER", "x11")
@@ -94,7 +88,6 @@ class ScreenWindow:
             else:
                 self._screen = pygame.display.set_mode(self._requested_size)
         except pygame.error:
-            # 全屏/Info 失败时回退固定窗口，避免整栈退出
             self._fullscreen = False
             self._screen = pygame.display.set_mode(self._requested_size)
 
@@ -103,12 +96,7 @@ class ScreenWindow:
         self._clock = pygame.time.Clock()
         self._running = False
         self._lock = threading.Lock()
-
-        self._agent_state = AgentState.IDLE
-        self._speak_text = ""
-        self._focus_remaining = 0
-        self._focus_duration = 0
-        self._mouth_open = False
+        self._context = PetDisplayContext()
 
     @property
     def size(self) -> tuple[int, int]:
@@ -119,13 +107,11 @@ class ScreenWindow:
         return self._fullscreen
 
     def start(self) -> None:
-        """Start the pygame event loop in a background thread."""
         self._running = True
         self._thread = threading.Thread(target=self._run_loop, name="ScreenWindow", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop the pygame event loop."""
         self._running = False
         if hasattr(self, "_thread"):
             self._thread.join(timeout=2)
@@ -134,25 +120,11 @@ class ScreenWindow:
         except Exception:
             pass
 
-    def update(
-        self,
-        agent_state: str,
-        speak_text: str = "",
-        focus_remaining: int = 0,
-        focus_duration: int = 0,
-    ) -> None:
-        """Update display state (thread-safe)."""
+    def update(self, context: PetDisplayContext) -> None:
         with self._lock:
-            try:
-                self._agent_state = AgentState(agent_state)
-            except ValueError:
-                self._agent_state = AgentState.IDLE
-            self._speak_text = speak_text
-            self._focus_remaining = focus_remaining
-            self._focus_duration = focus_duration
+            self._context = context
 
     def _run_loop(self) -> None:
-        """Main pygame event loop."""
         egl_errors = 0
         while self._running:
             for event in pygame.event.get():
@@ -175,18 +147,12 @@ class ScreenWindow:
                     self._running = False
                 time.sleep(0.05)
 
-    def _dim(self, fraction: float) -> int:
-        """Scale a layout unit against the shorter screen edge."""
-        return max(1, int(min(self._width, self._height) * fraction))
-
     def _draw(self) -> None:
-        """Draw current frame."""
+        ctx = self._context
         draw_pet_frame(
             self._screen,
             width=self._width,
             height=self._height,
-            agent_state=self._agent_state,
-            speak_text=self._speak_text,
-            focus_remaining=self._focus_remaining,
-            focus_duration=self._focus_duration,
+            agent_state=agent_state_from_str(ctx.agent_state),
+            context=ctx,
         )

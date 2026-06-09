@@ -15,7 +15,7 @@ if __package__ in {None, ""}:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-from src.adapters.voice.sherpa_kws import (  # noqa: E402
+from src.adapters.voice.wake.sherpa_kws import (  # noqa: E402
     DEFAULT_KEYWORDS_FILE,
     DEFAULT_MODEL_URL,
     DEFAULT_SHERPA_KWS_DIR,
